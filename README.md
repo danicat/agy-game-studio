@@ -1,21 +1,38 @@
-# Vibe Code a 2D Game with Go and Gemini
+# Antigravity 2D Game Studio (`agy-game-studio`)
 
-This plugin gives Antigravity the skills to build 2D games in Go with [Ebitengine](https://ebitengine.org/) and Google Gemini.
+**Antigravity 2D Game Studio** is an all-in-one 2D game development plugin and live WebAssembly **Playtest Studio** UI extension for Google Antigravity. Build 2D games in Go with [Ebitengine](https://ebitengine.org/) and Google Gemini, compile and playtest them live at 60 FPS in the side pane, rewind a 10-second DVR buffer, annotate visual bugs, and export 10-second animated GIF clips directly into your chat session.
+
+![Playtest Studio running Neon Bastion at 60 FPS](assets/playtest-studio-live.png)
 
 ## Quick start
 
-1. Run the setup check to verify Go 1.26+, `uv`, Node.js, and your Gemini credentials (`kungfu` and `godoctor` are optional but recommended):
+1. Link the plugin into your Antigravity plugins directory and run the environment doctor:
    ```bash
+   ln -s /path/to/agy-game-studio ~/.gemini/config/plugins/agy-game-studio
    ./scripts/check_env.sh
    ```
 
-2. In Antigravity chat, start the main game workflow with the slash command:
+2. In Antigravity chat, start the main game workflow or open Playtest Studio:
    ```text
    /vibe-game-developer
+   /playtest-studio
    ```
-   Tell the agent what kind of game you want to make. It will help you write a short design doc and then build the game step by step. You can draw sprites and make music with Gemini (Nano Banana 2.1 and Lyria 3.5), or generate art and sound in pure Go code.
 
-## Included skills
+## Playtest Studio UI Extension (`sidecars/studio`)
+
+Open **Playtest Studio** in the right-hand side pane via `/playtest-studio` or **⋮ → Extensions → Playtest Studio**:
+
+- **1-Click Go → WASM Compilation**: Compiles any Ebitengine v2 package with `GOOS=js GOARCH=wasm` and streams compiler or panic output directly to the agent.
+- **60 FPS Zero-Copy DVR Ring Buffer**: Continuously records the last **10 seconds (250 frames @ 25 FPS)** onto GPU-backed 2D canvases without dropping frame rate.
+- **Pause, Scrub & Annotate (`F8` or `` ` ``)**: Pause gameplay, scrub frame-by-frame through the 10s DVR timeline, draw boxes/arrows/callouts over visual bugs, and click **📸 Frame** or **🎞️ 10s GIF** to send the annotated report and console logs straight to Antigravity chat.
+
+![Pause & Annotate mode with 10s DVR rewind scrubber](assets/playtest-studio-annotate.png)
+
+### Exported 10s DVR Gameplay GIF
+
+![10-second animated GIF exported from Playtest Studio](assets/playtest-neon-bastion.gif)
+
+## Included skills (11)
 
 | Skill | What it does |
 | :--- | :--- |
@@ -32,8 +49,6 @@ This plugin gives Antigravity the skills to build 2D games in Go with [Ebitengin
 | [`swarm-coding`](skills/swarm-coding/SKILL.md) | Splits big tasks across parallel subagents so each one works on separate files. |
 
 ## Helper scripts
-
-You can also run the media and sprite tools from your terminal:
 
 ```bash
 # Generate or edit images with Nano Banana 2.1

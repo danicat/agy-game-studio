@@ -1262,7 +1262,7 @@ export class PlaytestStudioUI {
 
     if (this.runner.isPaused()) {
       this.focusPillEl.className = 'focus-status-pill paused';
-      this.focusPillEl.innerHTML = '<span>⏸ Paused — Draw on Frame or Scrub 5s DVR</span>';
+      this.focusPillEl.innerHTML = '<span>⏸ Paused — Draw on Frame or Scrub 10s DVR</span>';
       return;
     }
 
@@ -1567,7 +1567,7 @@ export class PlaytestStudioUI {
         noteInput.value = '';
       }
     } catch (err: any) {
-      StudioNotifier.error('Failed to encode or send 5s DVR GIF', err?.message || String(err));
+      StudioNotifier.error('Failed to encode or send 10s DVR GIF', err?.message || String(err));
     } finally {
       if (gifBtn) gifBtn.disabled = false;
       if (sendBtn) sendBtn.disabled = false;
