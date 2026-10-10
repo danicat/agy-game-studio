@@ -34,8 +34,6 @@ import { FrameDvrBuffer } from '../engine/FrameDvrBuffer.ts';
 import {
   BugAnnotator,
   QA_COLOR_SWATCHES,
-  getAnnotationShapesBounds,
-  unionViewportAndAnnotationBounds,
   type AnnotationTool
 } from '../engine/BugAnnotator.ts';
 import { WasmRunner } from '../engine/WasmRunner.ts';
@@ -1437,8 +1435,9 @@ export class PlaytestStudioUI {
     const srcWidth = selectedFrames[0]?.width || baseDims.width || 640;
     const srcHeight = selectedFrames[0]?.height || baseDims.height || 360;
 
-    // Probe the active rendered game viewport bounds so letterbox bars are cropped out of the GIF
-    let gameCrop = { x: 0, y: 0, width: srcWidth, height: srcHeight };
+    // Probe the active rendered game viewport bounds so letterbox bars are cropped out of the GIF.
+    // GIF exports never include annotations and are always locked strictly to game screen resolution.
+    let crop = { x: 0, y: 0, width: srcWidth, height: srcHeight };
     const probeFrame = selectedFrames[selectedFrames.length - 1] || selectedFrames[0];
     if (probeFrame) {
       const probeCanvas = document.createElement('canvas');
@@ -1454,27 +1453,9 @@ export class PlaytestStudioUI {
           probeCtx.drawImage(probeImg, 0, 0, srcWidth, srcHeight);
         }
         const probeData = probeCtx.getImageData(0, 0, srcWidth, srcHeight);
-        gameCrop = detectActiveViewportBounds(probeData.data, srcWidth, srcHeight);
+        crop = detectActiveViewportBounds(probeData.data, srcWidth, srcHeight);
       }
     }
-
-    // If annotations extend into the empty scratch space, expand the crop bounds just enough to include them
-    const shapes = this.annotator.getShapes();
-    let scaledAnnBounds = null;
-    if (shapes.length > 0 && baseDims.width > 0 && baseDims.height > 0) {
-      const rawAnn = getAnnotationShapesBounds(shapes, baseDims.width, baseDims.height);
-      if (rawAnn) {
-        const rx = srcWidth / baseDims.width;
-        const ry = srcHeight / baseDims.height;
-        scaledAnnBounds = {
-          x: Math.floor(rawAnn.x * rx),
-          y: Math.floor(rawAnn.y * ry),
-          width: Math.ceil(rawAnn.width * rx),
-          height: Math.ceil(rawAnn.height * ry)
-        };
-      }
-    }
-    const crop = unionViewportAndAnnotationBounds(gameCrop, scaledAnnBounds, srcWidth, srcHeight);
 
     // Scale to crisp 480px max width for fast encoding and compact inline chat GIF playback
     const maxGifWidth = 480;
@@ -1492,7 +1473,6 @@ export class PlaytestStudioUI {
     ctx.imageSmoothingEnabled = false;
 
     const gifFrames: GifFrameInput[] = [];
-    const hasAnnotations = shapes.length > 0;
 
     for (let i = 0; i < selectedFrames.length; i++) {
       const f = selectedFrames[i];
@@ -1526,7 +1506,7 @@ export class PlaytestStudioUI {
       }
       const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
 
-      const isLastUnannotated = i === selectedFrames.length - 1 && !hasAnnotations;
+      const isLastFrame = i === selectedFrames.length - 1;
       let frameDelayMs = this.dvrBuffer.captureIntervalMs;
       if (i + 1 < selectedFrames.length) {
         const rawDelta = selectedFrames[i + 1].timestampMs - f.timestampMs;
@@ -1537,28 +1517,37 @@ export class PlaytestStudioUI {
 
       gifFrames.push({
         rgba: new Uint8Array(imageData.data),
-        delayMs: isLastUnannotated ? 900 : frameDelayMs
+        delayMs: isLastFrame ? 900 : frameDelayMs
       });
     }
 
-    // If annotations were drawn (or no DVR frames existed yet), append the composite annotated frame
-    // held for 1500ms at the end of the GIF so the viewer sees the 10s motion lead-up freeze on the callout.
-    if (hasAnnotations || gifFrames.length === 0) {
-      const compositeUrl = this.annotator.exportCompositeDataUrl();
-      const compImg = await this.decodeDataUrlToImage(compositeUrl);
-      const compW = compImg.naturalWidth || srcWidth;
-      const compH = compImg.naturalHeight || srcHeight;
-      const sx = (crop.x / srcWidth) * compW;
-      const sy = (crop.y / srcHeight) * compH;
-      const sw = (crop.width / srcWidth) * compW;
-      const sh = (crop.height / srcHeight) * compH;
+    // If no DVR frames were buffered yet, capture a single unannotated frame from the live game canvas
+    if (gifFrames.length === 0) {
+      const liveCanvas = this.runner.getGameCanvas();
       ctx.fillStyle = '#090D16';
       ctx.fillRect(0, 0, targetWidth, targetHeight);
-      ctx.drawImage(compImg, sx, sy, sw, sh, 0, 0, targetWidth, targetHeight);
-      const compData = ctx.getImageData(0, 0, targetWidth, targetHeight);
+      if (liveCanvas && liveCanvas.width > 0 && liveCanvas.height > 0) {
+        const liveCtx = liveCanvas.getContext('2d');
+        if (liveCtx) {
+          const liveData = liveCtx.getImageData(0, 0, liveCanvas.width, liveCanvas.height);
+          crop = detectActiveViewportBounds(liveData.data, liveCanvas.width, liveCanvas.height);
+        }
+        ctx.drawImage(
+          liveCanvas,
+          crop.x,
+          crop.y,
+          crop.width,
+          crop.height,
+          0,
+          0,
+          targetWidth,
+          targetHeight
+        );
+      }
+      const fallbackData = ctx.getImageData(0, 0, targetWidth, targetHeight);
       gifFrames.push({
-        rgba: new Uint8Array(compData.data),
-        delayMs: 1500
+        rgba: new Uint8Array(fallbackData.data),
+        delayMs: 900
       });
     }
 
