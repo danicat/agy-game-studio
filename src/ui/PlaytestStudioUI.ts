@@ -40,6 +40,7 @@ import { WasmRunner } from '../engine/WasmRunner.ts';
 import {
   encodeAnimatedGif,
   gifBytesToDataUrl,
+  detectActiveViewportBounds,
   type GifFrameInput
 } from '../engine/GifEncoder.ts';
 
@@ -1434,11 +1435,32 @@ export class PlaytestStudioUI {
     const srcWidth = selectedFrames[0]?.width || baseDims.width || 640;
     const srcHeight = selectedFrames[0]?.height || baseDims.height || 360;
 
+    // Probe the active rendered game viewport bounds so letterbox bars are cropped out of the GIF
+    let crop = { x: 0, y: 0, width: srcWidth, height: srcHeight };
+    const probeFrame = selectedFrames[selectedFrames.length - 1] || selectedFrames[0];
+    if (probeFrame) {
+      const probeCanvas = document.createElement('canvas');
+      probeCanvas.width = srcWidth;
+      probeCanvas.height = srcHeight;
+      const probeCtx = probeCanvas.getContext('2d', { willReadFrequently: true });
+      if (probeCtx) {
+        probeCtx.clearRect(0, 0, srcWidth, srcHeight);
+        if (probeFrame.canvas) {
+          probeCtx.drawImage(probeFrame.canvas, 0, 0, srcWidth, srcHeight);
+        } else if (probeFrame.dataUrl) {
+          const probeImg = await this.decodeDataUrlToImage(probeFrame.dataUrl);
+          probeCtx.drawImage(probeImg, 0, 0, srcWidth, srcHeight);
+        }
+        const probeData = probeCtx.getImageData(0, 0, srcWidth, srcHeight);
+        crop = detectActiveViewportBounds(probeData.data, srcWidth, srcHeight);
+      }
+    }
+
     // Scale to crisp 480px max width for fast encoding and compact inline chat GIF playback
     const maxGifWidth = 480;
-    const scale = srcWidth > maxGifWidth ? maxGifWidth / srcWidth : 1;
-    const targetWidth = Math.max(64, Math.round(srcWidth * scale));
-    const targetHeight = Math.max(36, Math.round(srcHeight * scale));
+    const scale = crop.width > maxGifWidth ? maxGifWidth / crop.width : 1;
+    const targetWidth = Math.max(64, Math.round(crop.width * scale));
+    const targetHeight = Math.max(36, Math.round(crop.height * scale));
 
     const scratchCanvas = document.createElement('canvas');
     scratchCanvas.width = targetWidth;
@@ -1457,10 +1479,30 @@ export class PlaytestStudioUI {
       ctx.fillStyle = '#090D16';
       ctx.fillRect(0, 0, targetWidth, targetHeight);
       if (f.canvas) {
-        ctx.drawImage(f.canvas, 0, 0, targetWidth, targetHeight);
+        ctx.drawImage(
+          f.canvas,
+          crop.x,
+          crop.y,
+          crop.width,
+          crop.height,
+          0,
+          0,
+          targetWidth,
+          targetHeight
+        );
       } else {
         const img = await this.decodeDataUrlToImage(f.dataUrl);
-        ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+        ctx.drawImage(
+          img,
+          crop.x,
+          crop.y,
+          crop.width,
+          crop.height,
+          0,
+          0,
+          targetWidth,
+          targetHeight
+        );
       }
       const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
 
@@ -1484,9 +1526,15 @@ export class PlaytestStudioUI {
     if (hasAnnotations || gifFrames.length === 0) {
       const compositeUrl = this.annotator.exportCompositeDataUrl();
       const compImg = await this.decodeDataUrlToImage(compositeUrl);
+      const compW = compImg.naturalWidth || srcWidth;
+      const compH = compImg.naturalHeight || srcHeight;
+      const sx = (crop.x / srcWidth) * compW;
+      const sy = (crop.y / srcHeight) * compH;
+      const sw = (crop.width / srcWidth) * compW;
+      const sh = (crop.height / srcHeight) * compH;
       ctx.fillStyle = '#090D16';
       ctx.fillRect(0, 0, targetWidth, targetHeight);
-      ctx.drawImage(compImg, 0, 0, targetWidth, targetHeight);
+      ctx.drawImage(compImg, sx, sy, sw, sh, 0, 0, targetWidth, targetHeight);
       const compData = ctx.getImageData(0, 0, targetWidth, targetHeight);
       gifFrames.push({
         rgba: new Uint8Array(compData.data),

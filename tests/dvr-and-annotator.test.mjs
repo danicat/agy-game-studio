@@ -24,7 +24,8 @@ import {
 } from '../src/engine/BugAnnotator.ts';
 import {
   encodeAnimatedGif,
-  gifBytesToDataUrl
+  gifBytesToDataUrl,
+  detectActiveViewportBounds
 } from '../src/engine/GifEncoder.ts';
 
 function createTestCanvasSource(label, width = 640, height = 360) {
@@ -338,4 +339,42 @@ test('GifEncoder: encodes multi-frame RGBA animation into valid GIF89a with NETS
   assert.throws(() => encodeAnimatedGif({ width: 0, height: 10, frames: [{ rgba: frame1, delayMs: 66 }] }), /Invalid GIF dimensions/);
   assert.throws(() => encodeAnimatedGif({ width: 16, height: 12, frames: [] }), /requires at least 1 frame/);
 });
+
+test('GifEncoder: detectActiveViewportBounds crops transparent and black letterbox bars to true game resolution', () => {
+  const fullW = 480;
+  const fullH = 625;
+  const gameY = 177;
+  const gameH = 270;
+
+  // 1. Transparent letterbox bars (alpha=0 outside 480x270 game viewport)
+  const alphaRgba = new Uint8ClampedArray(fullW * fullH * 4);
+  for (let y = gameY; y < gameY + gameH; y++) {
+    for (let x = 0; x < fullW; x++) {
+      const idx = (y * fullW + x) * 4;
+      alphaRgba[idx] = 0;
+      alphaRgba[idx + 1] = 0;
+      alphaRgba[idx + 2] = 0;
+      alphaRgba[idx + 3] = 255; // even pure-black game pixels have alpha=255
+    }
+  }
+  const alphaCrop = detectActiveViewportBounds(alphaRgba, fullW, fullH);
+  assert.deepEqual(alphaCrop, { x: 0, y: gameY, width: fullW, height: gameH });
+
+  // 2. Opaque black letterbox bars (alpha=255 everywhere, rgb(0,0,0) outside game viewport)
+  const blackRgba = new Uint8ClampedArray(fullW * fullH * 4);
+  for (let i = 0; i < fullW * fullH; i++) {
+    blackRgba[i * 4 + 3] = 255;
+  }
+  for (let y = gameY; y < gameY + gameH; y++) {
+    for (let x = 0; x < fullW; x++) {
+      const idx = (y * fullW + x) * 4;
+      blackRgba[idx] = 16;
+      blackRgba[idx + 1] = 23;
+      blackRgba[idx + 2] = 38;
+    }
+  }
+  const blackCrop = detectActiveViewportBounds(blackRgba, fullW, fullH);
+  assert.deepEqual(blackCrop, { x: 0, y: gameY, width: fullW, height: gameH });
+});
+
 

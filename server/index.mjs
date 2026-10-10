@@ -580,7 +580,7 @@ export function buildRunnerHtml(params = {}) {
             const c = document.createElement('canvas');
             slot = {
               canvas: c,
-              ctx: c.getContext('2d', { alpha: false }),
+              ctx: c.getContext('2d'),
               width: 0,
               height: 0,
               timestampMs: 0
@@ -601,6 +601,7 @@ export function buildRunnerHtml(params = {}) {
             }
           }
           if (slot.ctx) {
+            slot.ctx.clearRect(0, 0, targetW, targetH);
             slot.ctx.drawImage(canvas, 0, 0, targetW, targetH);
           }
           slot.timestampMs = timestampMs;

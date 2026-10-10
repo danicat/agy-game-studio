@@ -349,6 +349,106 @@ export function encodeAnimatedGif(options: EncodeGifOptions): Uint8Array {
   return out.toUint8Array();
 }
 
+export interface ViewportCropBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Detects the active rendered game viewport inside a potentially letterboxed or pillarboxed
+ * canvas RGBA buffer. Ebitengine's WebGL canvas leaves letterbox bars transparent (`alpha === 0`)
+ * or pure black (`rgb(0,0,0)`). Returns the tight `{ x, y, width, height }` of the game screen.
+ */
+export function detectActiveViewportBounds(
+  rgba: Uint8ClampedArray | Uint8Array,
+  width: number,
+  height: number
+): ViewportCropBounds {
+  if (width <= 0 || height <= 0 || rgba.length < width * height * 4) {
+    return { x: 0, y: 0, width: Math.max(1, width), height: Math.max(1, height) };
+  }
+
+  const topLeftAlpha = rgba[3];
+  const bottomRightAlpha = rgba[(width * height - 1) * 4 + 3];
+  const useAlphaMask = topLeftAlpha === 0 || bottomRightAlpha === 0;
+
+  const isGamePixel = (idx: number): boolean => {
+    const a = rgba[idx + 3];
+    if (useAlphaMask) {
+      return a > 16;
+    }
+    return a > 16 && (rgba[idx] > 0 || rgba[idx + 1] > 0 || rgba[idx + 2] > 0);
+  };
+
+  let minY = 0;
+  let foundTop = false;
+  for (let y = 0; y < height; y++) {
+    const rowOffset = y * width * 4;
+    for (let x = 0; x < width; x += 2) {
+      if (isGamePixel(rowOffset + x * 4)) {
+        minY = y;
+        foundTop = true;
+        break;
+      }
+    }
+    if (foundTop) break;
+  }
+
+  if (!foundTop) {
+    return { x: 0, y: 0, width, height };
+  }
+
+  let maxY = height - 1;
+  for (let y = height - 1; y >= minY; y--) {
+    const rowOffset = y * width * 4;
+    let rowHasPixel = false;
+    for (let x = 0; x < width; x += 2) {
+      if (isGamePixel(rowOffset + x * 4)) {
+        maxY = y;
+        rowHasPixel = true;
+        break;
+      }
+    }
+    if (rowHasPixel) break;
+  }
+
+  let minX = 0;
+  let foundLeft = false;
+  for (let x = 0; x < width; x++) {
+    for (let y = minY; y <= maxY; y += 2) {
+      if (isGamePixel((y * width + x) * 4)) {
+        minX = x;
+        foundLeft = true;
+        break;
+      }
+    }
+    if (foundLeft) break;
+  }
+
+  let maxX = width - 1;
+  for (let x = width - 1; x >= minX; x--) {
+    let colHasPixel = false;
+    for (let y = minY; y <= maxY; y += 2) {
+      if (isGamePixel((y * width + x) * 4)) {
+        maxX = x;
+        colHasPixel = true;
+        break;
+      }
+    }
+    if (colHasPixel) break;
+  }
+
+  const cropW = maxX - minX + 1;
+  const cropH = maxY - minY + 1;
+  if (cropW < 64 || cropH < 36) {
+    return { x: 0, y: 0, width, height };
+  }
+
+  return { x: minX, y: minY, width: cropW, height: cropH };
+}
+
 /**
  * Convert a GIF binary `Uint8Array` into a `data:image/gif;base64,...` data URL.
  */
@@ -362,4 +462,5 @@ export function gifBytesToDataUrl(bytes: Uint8Array): string {
   const binaryString = parts.join('');
   return `data:image/gif;base64,${btoa(binaryString)}`;
 }
+
 
