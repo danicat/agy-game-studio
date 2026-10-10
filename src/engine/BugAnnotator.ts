@@ -14,6 +14,11 @@
  * limitations under the License.
  */
 
+import {
+  detectActiveViewportBounds,
+  type ViewportCropBounds
+} from './GifEncoder.ts';
+
 export type AnnotationTool = 'pen' | 'arrow' | 'box' | 'text';
 
 export interface Point2D {
@@ -543,6 +548,110 @@ export class BugAnnotator {
     return outCanvas.toDataURL('image/png');
   }
 
+  /**
+   * Computes a smart composite PNG export that:
+   * 1. Crops out empty letterbox/pillarbox space if no annotations were drawn in it (true-to-resolution screenshot).
+   * 2. Expands the crop bounds if and only if annotations extend into the empty scratch space.
+   */
+  public exportSmartComposite(
+    customOffscreenCanvas?: HTMLCanvasElement
+  ): {
+    dataUrl: string;
+    width: number;
+    height: number;
+    crop: ViewportCropBounds;
+  } {
+    const outCanvas =
+      customOffscreenCanvas ??
+      (typeof document !== 'undefined' ? document.createElement('canvas') : null);
+
+    if (!outCanvas) {
+      throw new Error(
+        '[BugAnnotator] Cannot export composite image without a DOM document or customOffscreenCanvas.'
+      );
+    }
+
+    let gameBounds: ViewportCropBounds = {
+      x: 0,
+      y: 0,
+      width: this.width,
+      height: this.height
+    };
+
+    if (this.baseCanvas && typeof this.baseCanvas.getContext === 'function') {
+      const baseCtx = this.baseCanvas.getContext('2d');
+      if (baseCtx && typeof baseCtx.getImageData === 'function') {
+        const baseData = baseCtx.getImageData(0, 0, this.width, this.height);
+        gameBounds = detectActiveViewportBounds(baseData.data, this.width, this.height);
+      }
+    }
+
+    const annBounds = getAnnotationShapesBounds(this.shapes, this.width, this.height);
+    const crop = unionViewportAndAnnotationBounds(
+      gameBounds,
+      annBounds,
+      this.width,
+      this.height
+    );
+
+    outCanvas.width = crop.width;
+    outCanvas.height = crop.height;
+    const ctx = outCanvas.getContext('2d');
+    if (!ctx) {
+      throw new Error('[BugAnnotator] Failed to acquire 2D context for smart composite export.');
+    }
+
+    // Fill studio dark background so any scratch-space margin with annotations is legible
+    if (
+      typeof ctx.fillRect === 'function' &&
+      (crop.x < gameBounds.x ||
+        crop.y < gameBounds.y ||
+        crop.x + crop.width > gameBounds.x + gameBounds.width ||
+        crop.y + crop.height > gameBounds.y + gameBounds.height ||
+        !this.baseCanvas)
+    ) {
+      ctx.fillStyle = '#090D16';
+      ctx.fillRect(0, 0, crop.width, crop.height);
+    }
+
+    if (this.baseCanvas) {
+      if (crop.x === 0 && crop.y === 0 && crop.width === this.width && crop.height === this.height) {
+        ctx.drawImage(this.baseCanvas, 0, 0, this.width, this.height);
+      } else {
+        ctx.drawImage(
+          this.baseCanvas,
+          crop.x,
+          crop.y,
+          crop.width,
+          crop.height,
+          0,
+          0,
+          crop.width,
+          crop.height
+        );
+      }
+    }
+
+    const needsTranslate = (crop.x !== 0 || crop.y !== 0) && typeof ctx.translate === 'function';
+    if (needsTranslate) {
+      ctx.save();
+      ctx.translate(-crop.x, -crop.y);
+    }
+    for (const shape of this.shapes) {
+      this.renderShape(ctx, shape);
+    }
+    if (needsTranslate) {
+      ctx.restore();
+    }
+
+    return {
+      dataUrl: outCanvas.toDataURL('image/png'),
+      width: crop.width,
+      height: crop.height,
+      crop
+    };
+  }
+
   private bindPointerEvents(canvas: HTMLCanvasElement): void {
     const toCanvasCoords = (e: PointerEvent): Point2D => {
       const rect = canvas.getBoundingClientRect();
@@ -760,3 +869,113 @@ export class BugAnnotator {
     }
   }
 }
+
+/**
+ * Computes the bounding box of all drawn `AnnotationShape`s on a `(canvasWidth x canvasHeight)` stage,
+ * including stroke/arrowhead/pill padding and an optional safety margin. Returns `null` if no shapes exist.
+ */
+export function getAnnotationShapesBounds(
+  shapes: AnnotationShape[],
+  canvasWidth: number,
+  canvasHeight: number,
+  marginPx = 12
+): ViewportCropBounds | null {
+  if (!shapes || shapes.length === 0 || canvasWidth <= 0 || canvasHeight <= 0) {
+    return null;
+  }
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  const includeRect = (x1: number, y1: number, x2: number, y2: number, pad: number) => {
+    const left = Math.min(x1, x2) - pad;
+    const right = Math.max(x1, x2) + pad;
+    const top = Math.min(y1, y2) - pad;
+    const bottom = Math.max(y1, y2) + pad;
+    if (left < minX) minX = left;
+    if (top < minY) minY = top;
+    if (right > maxX) maxX = right;
+    if (bottom > maxY) maxY = bottom;
+  };
+
+  for (const shape of shapes) {
+    if (shape.type === 'pen') {
+      const pad = (shape.strokeWidth || 3) + 4 + marginPx;
+      for (const pt of shape.points) {
+        includeRect(pt.x, pt.y, pt.x, pt.y, pad);
+      }
+    } else if (shape.type === 'arrow') {
+      const pad = Math.max(16, (shape.strokeWidth || 3) * 4.5) + marginPx;
+      includeRect(shape.startX, shape.startY, shape.endX, shape.endY, pad);
+    } else if (shape.type === 'box') {
+      const pad = (shape.strokeWidth || 3) + 4 + marginPx;
+      includeRect(
+        shape.x,
+        shape.y,
+        shape.x + shape.width,
+        shape.y + shape.height,
+        pad
+      );
+    } else if (shape.type === 'text') {
+      const estTextW = Math.ceil((shape.text || '').length * 8.5) + 16;
+      const pillH = 24;
+      const pillX = Math.max(4, Math.min(canvasWidth - estTextW - 4, shape.x));
+      const pillY = Math.max(4, Math.min(canvasHeight - pillH - 4, shape.y - pillH / 2));
+      includeRect(pillX, pillY, pillX + estTextW, pillY + pillH, 4 + marginPx);
+    }
+  }
+
+  if (!Number.isFinite(minX) || !Number.isFinite(minY)) {
+    return null;
+  }
+
+  const clampedX = Math.max(0, Math.floor(minX));
+  const clampedY = Math.max(0, Math.floor(minY));
+  const clampedMaxX = Math.min(canvasWidth, Math.ceil(maxX));
+  const clampedMaxY = Math.min(canvasHeight, Math.ceil(maxY));
+
+  return {
+    x: clampedX,
+    y: clampedY,
+    width: Math.max(1, clampedMaxX - clampedX),
+    height: Math.max(1, clampedMaxY - clampedY)
+  };
+}
+
+/**
+ * Unions the active game viewport bounds with any annotation bounds.
+ * - If no annotations exist (or all annotations lie inside the game viewport), returns `gameBounds`
+ *   so the exported screenshot/GIF is 100% true to the game's resolution without padding.
+ * - If annotations extend into the empty scratch space, expands the bounds just enough to include them.
+ */
+export function unionViewportAndAnnotationBounds(
+  gameBounds: ViewportCropBounds,
+  annotationBounds: ViewportCropBounds | null,
+  maxWidth: number,
+  maxHeight: number
+): ViewportCropBounds {
+  if (!annotationBounds) {
+    return gameBounds;
+  }
+
+  const minX = Math.max(0, Math.min(gameBounds.x, annotationBounds.x));
+  const minY = Math.max(0, Math.min(gameBounds.y, annotationBounds.y));
+  const maxX = Math.min(
+    maxWidth,
+    Math.max(gameBounds.x + gameBounds.width, annotationBounds.x + annotationBounds.width)
+  );
+  const maxY = Math.min(
+    maxHeight,
+    Math.max(gameBounds.y + gameBounds.height, annotationBounds.y + annotationBounds.height)
+  );
+
+  return {
+    x: minX,
+    y: minY,
+    width: Math.max(1, maxX - minX),
+    height: Math.max(1, maxY - minY)
+  };
+}
+

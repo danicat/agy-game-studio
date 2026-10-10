@@ -34,6 +34,8 @@ import { FrameDvrBuffer } from '../engine/FrameDvrBuffer.ts';
 import {
   BugAnnotator,
   QA_COLOR_SWATCHES,
+  getAnnotationShapesBounds,
+  unionViewportAndAnnotationBounds,
   type AnnotationTool
 } from '../engine/BugAnnotator.ts';
 import { WasmRunner } from '../engine/WasmRunner.ts';
@@ -1436,7 +1438,7 @@ export class PlaytestStudioUI {
     const srcHeight = selectedFrames[0]?.height || baseDims.height || 360;
 
     // Probe the active rendered game viewport bounds so letterbox bars are cropped out of the GIF
-    let crop = { x: 0, y: 0, width: srcWidth, height: srcHeight };
+    let gameCrop = { x: 0, y: 0, width: srcWidth, height: srcHeight };
     const probeFrame = selectedFrames[selectedFrames.length - 1] || selectedFrames[0];
     if (probeFrame) {
       const probeCanvas = document.createElement('canvas');
@@ -1452,9 +1454,27 @@ export class PlaytestStudioUI {
           probeCtx.drawImage(probeImg, 0, 0, srcWidth, srcHeight);
         }
         const probeData = probeCtx.getImageData(0, 0, srcWidth, srcHeight);
-        crop = detectActiveViewportBounds(probeData.data, srcWidth, srcHeight);
+        gameCrop = detectActiveViewportBounds(probeData.data, srcWidth, srcHeight);
       }
     }
+
+    // If annotations extend into the empty scratch space, expand the crop bounds just enough to include them
+    const shapes = this.annotator.getShapes();
+    let scaledAnnBounds = null;
+    if (shapes.length > 0 && baseDims.width > 0 && baseDims.height > 0) {
+      const rawAnn = getAnnotationShapesBounds(shapes, baseDims.width, baseDims.height);
+      if (rawAnn) {
+        const rx = srcWidth / baseDims.width;
+        const ry = srcHeight / baseDims.height;
+        scaledAnnBounds = {
+          x: Math.floor(rawAnn.x * rx),
+          y: Math.floor(rawAnn.y * ry),
+          width: Math.ceil(rawAnn.width * rx),
+          height: Math.ceil(rawAnn.height * ry)
+        };
+      }
+    }
+    const crop = unionViewportAndAnnotationBounds(gameCrop, scaledAnnBounds, srcWidth, srcHeight);
 
     // Scale to crisp 480px max width for fast encoding and compact inline chat GIF playback
     const maxGifWidth = 480;
@@ -1472,7 +1492,7 @@ export class PlaytestStudioUI {
     ctx.imageSmoothingEnabled = false;
 
     const gifFrames: GifFrameInput[] = [];
-    const hasAnnotations = this.annotator.getShapes().length > 0;
+    const hasAnnotations = shapes.length > 0;
 
     for (let i = 0; i < selectedFrames.length; i++) {
       const f = selectedFrames[i];
@@ -1645,8 +1665,7 @@ export class PlaytestStudioUI {
       const includeLogs = includeLogsCheckbox ? includeLogsCheckbox.checked : true;
       const consoleLogs = includeLogs ? this.runner.getConsoleLogs() : [];
 
-      const compositeDataUrl = this.annotator.exportCompositeDataUrl();
-      const dims = this.annotator.getDimensions();
+      const smartExport = this.annotator.exportSmartComposite();
       const currentFrame = this.dvrBuffer.getFrameAt(this.activeDvrIndex);
       const frameOffset = currentFrame
         ? currentFrame.relativeSec === 0
@@ -1657,15 +1676,15 @@ export class PlaytestStudioUI {
       const filename = `playtest-bug-${Date.now()}.png`;
       const res = await sendBugToChat({
         filename,
-        imageDataUrl: compositeDataUrl,
+        imageDataUrl: smartExport.dataUrl,
         note,
         consoleLogs,
         workspace: getWorkspacePath() || '.',
         pkg: this.activePkg,
         frameOffset,
-        resolution: `${dims.width}x${dims.height}`,
-        width: dims.width,
-        height: dims.height
+        resolution: `${smartExport.width}x${smartExport.height}`,
+        width: smartExport.width,
+        height: smartExport.height
       });
 
       StudioNotifier.success(`Delivered "${res.filename || filename}" to Antigravity chat!`);

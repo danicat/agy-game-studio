@@ -20,7 +20,9 @@ import { FrameDvrBuffer } from '../src/engine/FrameDvrBuffer.ts';
 import {
   BugAnnotator,
   QA_COLOR_SWATCHES,
-  hexToRgba
+  hexToRgba,
+  getAnnotationShapesBounds,
+  unionViewportAndAnnotationBounds
 } from '../src/engine/BugAnnotator.ts';
 import {
   encodeAnimatedGif,
@@ -375,6 +377,33 @@ test('GifEncoder: detectActiveViewportBounds crops transparent and black letterb
   }
   const blackCrop = detectActiveViewportBounds(blackRgba, fullW, fullH);
   assert.deepEqual(blackCrop, { x: 0, y: gameY, width: fullW, height: gameH });
+
+  // 3. When no annotations or annotations are inside the game viewport -> keeps exact 480x270 game resolution
+  const insideAnn = getAnnotationShapesBounds(
+    [{ id: 'a1', type: 'box', color: '#EF4444', strokeWidth: 3, x: 100, y: 200, width: 80, height: 50 }],
+    fullW,
+    fullH
+  );
+  const insideUnion = unionViewportAndAnnotationBounds(alphaCrop, insideAnn, fullW, fullH);
+  assert.deepEqual(insideUnion, { x: 0, y: gameY, width: fullW, height: gameH });
+
+  // 4. When an annotation is drawn in the top empty scratch space (y=40) -> expands top only, crops bottom padding
+  const topScratchAnn = getAnnotationShapesBounds(
+    [{ id: 't1', type: 'text', color: '#FACC15', x: 120, y: 40, text: 'Spawn bug here' }],
+    fullW,
+    fullH,
+    12
+  );
+  const expandedUnion = unionViewportAndAnnotationBounds(alphaCrop, topScratchAnn, fullW, fullH);
+  assert.equal(expandedUnion.x, 0);
+  assert.ok(expandedUnion.y < gameY, `Expected top y (${expandedUnion.y}) to expand above gameY (${gameY})`);
+  assert.equal(expandedUnion.width, fullW);
+  assert.equal(
+    expandedUnion.y + expandedUnion.height,
+    gameY + gameH,
+    'Bottom empty space without annotations should remain cropped out'
+  );
 });
+
 
 
