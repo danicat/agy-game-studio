@@ -370,14 +370,36 @@ export function detectActiveViewportBounds(
     return { x: 0, y: 0, width: Math.max(1, width), height: Math.max(1, height) };
   }
 
+  const lastIdx = (width * height - 1) * 4;
   const topLeftAlpha = rgba[3];
-  const bottomRightAlpha = rgba[(width * height - 1) * 4 + 3];
+  const bottomRightAlpha = rgba[lastIdx + 3];
   const useAlphaMask = topLeftAlpha === 0 || bottomRightAlpha === 0;
+
+  // Check if top-left and bottom-right corners share a uniform dark letterbox background (#000000 or #090D16)
+  const bgR = rgba[0];
+  const bgG = rgba[1];
+  const bgB = rgba[2];
+  const cornersMatchDarkBg =
+    !useAlphaMask &&
+    bgR <= 12 &&
+    bgG <= 16 &&
+    bgB <= 26 &&
+    Math.abs(rgba[lastIdx] - bgR) <= 2 &&
+    Math.abs(rgba[lastIdx + 1] - bgG) <= 2 &&
+    Math.abs(rgba[lastIdx + 2] - bgB) <= 2;
 
   const isGamePixel = (idx: number): boolean => {
     const a = rgba[idx + 3];
     if (useAlphaMask) {
       return a > 16;
+    }
+    if (cornersMatchDarkBg) {
+      return (
+        a > 16 &&
+        (Math.abs(rgba[idx] - bgR) > 2 ||
+          Math.abs(rgba[idx + 1] - bgG) > 2 ||
+          Math.abs(rgba[idx + 2] - bgB) > 2)
+      );
     }
     return a > 16 && (rgba[idx] > 0 || rgba[idx + 1] > 0 || rgba[idx + 2] > 0);
   };

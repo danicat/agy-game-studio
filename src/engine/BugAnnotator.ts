@@ -751,8 +751,23 @@ export class BugAnnotator {
       const finalized = this.draftShape;
       this.draftShape = null;
 
-      // Ignore accidental zero-size clicks for box/arrow
-      if (finalized.type === 'arrow') {
+      // Ignore accidental zero-size clicks for pen/box/arrow
+      if (finalized.type === 'pen') {
+        let minPx = Infinity;
+        let maxPx = -Infinity;
+        let minPy = Infinity;
+        let maxPy = -Infinity;
+        for (const p of finalized.points) {
+          if (p.x < minPx) minPx = p.x;
+          if (p.x > maxPx) maxPx = p.x;
+          if (p.y < minPy) minPy = p.y;
+          if (p.y > maxPy) maxPy = p.y;
+        }
+        if (Math.hypot(maxPx - minPx, maxPy - minPy) < 3) {
+          this.renderOverlay();
+          return;
+        }
+      } else if (finalized.type === 'arrow') {
         const dist = Math.hypot(finalized.endX - finalized.startX, finalized.endY - finalized.startY);
         if (dist < 4) {
           this.renderOverlay();
