@@ -59,11 +59,9 @@ Place the plugin directory in one of Antigravity's plugin discovery roots:
 
 ### 3. Open Playtest Studio & start building
 
-Use these slash commands inside any Antigravity conversation:
+Use this slash command inside any Antigravity conversation:
 
-- **`/vibe-game-developer`** — Start a new 2D game from scratch. Interviews you to create a `GDD.md`, architects the Ebitengine loop, generates procedural or Gemini art/music, and launches Playtest Studio.
 - **`/playtest-studio`** — Open the **Playtest Studio** side pane (or click **⋮ → Extensions → Playtest Studio** in the top-right corner of a conversation).
-- **`/grill-me`** — Run an interactive game design interview to flesh out mechanics and produce a `GDD.md`.
 
 ### 4. Configure Gemini credentials for AI art & music (optional)
 
@@ -101,21 +99,11 @@ Open **Playtest Studio** in the right-hand side pane via `/playtest-studio`, `[P
 
 ---
 
-## Included Skills (11)
+## Included Skills
 
 | Skill | What it does |
 | :--- | :--- |
-| [`vibe-game-developer`](skills/vibe-game-developer/SKILL.md) | Main entry point (`/vibe-game-developer`). Routes your prompts to the right design, code, art, or audio skill. |
 | [`playtest-studio`](skills/playtest-studio/SKILL.md) | Launches the live 60 FPS Ebitengine WASM Playtest Studio in the side pane (`/playtest-studio`) with a 10s DVR rewind buffer, 10s GIF export, and visual bug annotations. |
-| [`game-design`](skills/game-design/SKILL.md) | Asks focused design questions (`/grill-me`) to turn your idea into a clear `GDD.md`. |
-| [`ebitengineer`](skills/ebitengineer/SKILL.md) | Writes Ebitengine v2 game loops, scenes, 2D cameras, physics, tilemaps, shaders, and WebAssembly builds. |
-| [`procedural-art`](skills/procedural-art/SKILL.md) | Draws 2D sprites, shapes, color ramps, and particles in pure Go code without image files. |
-| [`sprite-animation`](skills/sprite-animation/SKILL.md) | Slices sprite sheets, plays frame animations, and reads Aseprite files. |
-| [`procedural-composer`](skills/procedural-composer/SKILL.md) | Generates retro sound effects and music loops in pure Go code. |
-| [`nano-banana`](skills/nano-banana/SKILL.md) | Generates sprites, tilesets, and game art with Nano Banana (`gemini-nano-banana-2.1`, `gemini-3.1-flash-image`, `gemini-3-pro-image`). |
-| [`lyria`](skills/lyria/SKILL.md) | Generates 44.1 kHz stereo music tracks and loops with Lyria (`lyria-3.5`, `lyria-3-pro-preview`, `lyria-3-clip-preview`). |
-| [`godoctor`](skills/godoctor/SKILL.md) | Checks Go code quality, test coverage (`testquery`), and mutation score (`selene`). |
-| [`swarm-coding`](skills/swarm-coding/SKILL.md) | Splits multi-system game features across parallel subagents with disjoint file ownership. |
 
 ---
 
@@ -164,9 +152,6 @@ gemini-api image --help
 
 # Generate music tracks with Lyria (via gemini-api CLI)
 gemini-api music --help
-
-# Slice a sprite sheet PNG into an Aseprite JSON manifest
-uv run skills/sprite-animation/scripts/slice_spritesheet.py --help
 ```
 
 ---
