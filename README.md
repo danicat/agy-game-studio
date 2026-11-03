@@ -112,8 +112,8 @@ Open **Playtest Studio** in the right-hand side pane via `/playtest-studio`, `[P
 | [`procedural-art`](skills/procedural-art/SKILL.md) | Draws 2D sprites, shapes, color ramps, and particles in pure Go code without image files. |
 | [`sprite-animation`](skills/sprite-animation/SKILL.md) | Slices sprite sheets, plays frame animations, and reads Aseprite files. |
 | [`procedural-composer`](skills/procedural-composer/SKILL.md) | Generates retro sound effects and music loops in pure Go code. |
-| [`nano-banana`](skills/nano-banana/SKILL.md) | Generates sprites, tilesets, and game art with Nano Banana (`gemini-3.1-flash-image-preview`, `gemini-3-pro-image-preview`). |
-| [`lyria`](skills/lyria/SKILL.md) | Generates 44.1 kHz stereo music tracks and loops with Lyria (`lyria-3-pro-preview`, `lyria-3-clip-preview`). |
+| [`nano-banana`](skills/nano-banana/SKILL.md) | Generates sprites, tilesets, and game art with Nano Banana (`gemini-nano-banana-2.1`, `gemini-3.1-flash-image`, `gemini-3-pro-image`). |
+| [`lyria`](skills/lyria/SKILL.md) | Generates 44.1 kHz stereo music tracks and loops with Lyria (`lyria-3.5`, `lyria-3-pro-preview`, `lyria-3-clip-preview`). |
 | [`godoctor`](skills/godoctor/SKILL.md) | Checks Go code quality, test coverage (`testquery`), and mutation score (`selene`). |
 | [`swarm-coding`](skills/swarm-coding/SKILL.md) | Splits multi-system game features across parallel subagents with disjoint file ownership. |
 
@@ -159,11 +159,11 @@ Antigravity writes sidecar `stdout` and `stderr` to:
 ### 4. Standalone CLI helper scripts
 
 ```bash
-# Generate or edit images with Nano Banana
-uv run skills/nano-banana/scripts/banana.py --help
+# Generate or edit images with Nano Banana (via gemini-api CLI)
+gemini-api image --help
 
-# Generate music tracks with Lyria
-uv run skills/lyria/scripts/lyria.py --help
+# Generate music tracks with Lyria (via gemini-api CLI)
+gemini-api music --help
 
 # Slice a sprite sheet PNG into an Aseprite JSON manifest
 uv run skills/sprite-animation/scripts/slice_spritesheet.py --help
