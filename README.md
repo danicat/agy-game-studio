@@ -104,6 +104,8 @@ Open **Playtest Studio** in the right-hand side pane via `/playtest-studio`, `[P
 | Skill | What it does |
 | :--- | :--- |
 | [`playtest-studio`](skills/playtest-studio/SKILL.md) | Launches the live 60 FPS Ebitengine WASM Playtest Studio in the side pane (`/playtest-studio`) with a 10s DVR rewind buffer, 10s GIF export, and visual bug annotations. |
+| [`procedural-music`](skills/procedural-music/SKILL.md) | Composes, validates, and synthesizes 16-bit retro multi-track BGM in Go using a high-density music DSL with YM2612 FM synthesis and Apple CoreAudio GM instruments. |
+| [`procedural-sfx`](skills/procedural-sfx/SKILL.md) | Generates and synthesizes procedural game sound effects (lasers, explosions, jumps, powerups, hits) via FM, PSG, and filtered noise DSP pipelines. |
 
 ---
 

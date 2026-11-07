@@ -16,3 +16,6 @@ node_modules/
 bin/
 coverage.out
 
+# Audio export artifacts
+*.wav
+
