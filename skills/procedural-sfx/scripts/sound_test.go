@@ -16,6 +16,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"testing"
 )
@@ -136,5 +137,178 @@ func TestSFXDSLAndDSPPostProcessing(t *testing.T) {
 	crushed := ApplyBitcrush(sliced, 4, 4)
 	if len(crushed) != len(sliced) || len(crushed)%4 != 0 {
 		t.Fatalf("ApplyBitcrush length = %d, want %d", len(crushed), len(sliced))
+	}
+}
+
+func TestPolyBLEPAndSoftClip(t *testing.T) {
+	// PolyBLEP test
+	if b := polyBLEP(0.5, 0.1); b != 0.0 {
+		t.Errorf("polyBLEP middle should be 0.0, got %f", b)
+	}
+	if b := polyBLEP(0.0, 0.1); b != -1.0 {
+		t.Errorf("polyBLEP at 0 should be -1.0, got %f", b)
+	}
+	if b := polyBLEP(0.05, 0.1); b >= 0.0 {
+		t.Errorf("polyBLEP inside ramp should be negative, got %f", b)
+	}
+
+	// SoftClip test: identity inside [-0.75, 0.75]
+	for _, val := range []float64{-0.75, -0.5, 0.0, 0.5, 0.75} {
+		clipped := SoftClip(val)
+		if math.Abs(clipped-val) > 1e-6 {
+			t.Errorf("SoftClip(%f) = %f, want exact match", val, clipped)
+		}
+	}
+	// SoftClip test: strictly bounded below or equal to 1.0
+	for _, val := range []float64{0.8, 1.0, 2.0, 10.0, 100.0} {
+		clipped := SoftClip(val)
+		if clipped > 1.0 || clipped < 0.75 {
+			t.Errorf("SoftClip(%f) = %f, expected in [0.75, 1.0]", val, clipped)
+		}
+		negClipped := SoftClip(-val)
+		if negClipped < -1.0 || negClipped > -0.75 {
+			t.Errorf("SoftClip(-%f) = %f, expected in [-1.0, -0.75]", val, negClipped)
+		}
+	}
+}
+
+func TestLFSRNoiseAndPSGWave(t *testing.T) {
+	lfsr := NewLFSRNoise(12345)
+	var sum float64
+	const nSamples = 20000
+	for i := 0; i < nSamples; i++ {
+		sample := lfsr.Next(0)
+		if sample != 1.0 && sample != -1.0 {
+			t.Fatalf("LFSR bit output should be +/-1.0, got %f", sample)
+		}
+		sum += sample
+	}
+	avg := sum / float64(nSamples)
+	if math.Abs(avg) > 0.05 {
+		t.Errorf("LFSR DC bias too high: %f", avg)
+	}
+
+	// Test DSL synthesis with wave=psg_noise
+	const psgDSL = `
+title "PSG Noise Zap"
+type sfx
+step wave=psg_noise freq=220Hz dur=100ms vol=0.30 adsr=0.002,0.02,0.1,0.05
+`
+	pcm, err := CompileDSL(psgDSL)
+	if err != nil {
+		t.Fatalf("CompileDSL psg_noise failed: %v", err)
+	}
+	rep, err := ValidateProductionSFX(pcm)
+	if err != nil {
+		t.Fatalf("ValidateProductionSFX failed on psg_noise: %v", err)
+	}
+	if !rep.Passed {
+		t.Fatalf("psg_noise failed validation: %v", rep.Issues)
+	}
+}
+
+func TestDynamicDutyCycleAndFilterSweeps(t *testing.T) {
+	const sweepDSL = `
+title "Dynamic Sweeps"
+type sfx
+inst laser wave=square freq=880Hz->220Hz duty=0.50->0.125 vol=0.30 adsr=0.002,0.04,0.15,0.05 lpf=3000->400 q=2.0
+track main laser: laser:120ms
+`
+	pcm, err := CompileDSL(sweepDSL)
+	if err != nil {
+		t.Fatalf("CompileDSL sweep failed: %v", err)
+	}
+	rep, err := ValidateProductionSFX(pcm)
+	if err != nil {
+		t.Fatalf("ValidateProductionSFX failed on dynamic sweeps: %v", err)
+	}
+	if !rep.Passed {
+		t.Fatalf("dynamic sweeps failed validation: %v", rep.Issues)
+	}
+}
+
+func TestPitchCurves(t *testing.T) {
+	for _, curve := range []string{"exp", "lin", "hyper"} {
+		dsl := fmt.Sprintf(`
+title "Curve Test %s"
+type sfx
+inst zap wave=square freq=1000Hz->100Hz curve=%s vol=0.25 adsr=0.002,0.03,0.10,0.04
+track main zap: zap:80ms
+`, curve, curve)
+		pcm, err := CompileDSL(dsl)
+		if err != nil {
+			t.Fatalf("CompileDSL curve=%s failed: %v", curve, err)
+		}
+		rep, err := ValidateProductionSFX(pcm)
+		if err != nil || !rep.Passed {
+			t.Fatalf("ValidateProductionSFX failed for curve=%s: %v", curve, err)
+		}
+	}
+}
+
+func TestAllSFXPresets(t *testing.T) {
+	presets := ListSFXPresets()
+	if len(presets) < 18 {
+		t.Fatalf("expected at least 18 presets, got %d", len(presets))
+	}
+
+	for _, name := range presets {
+		dsl := fmt.Sprintf(`
+title "Preset Test %s"
+type sfx
+inst test_inst preset=%s
+track main test_inst: test_inst:120ms
+`, name, name)
+		pcm, err := CompileDSL(dsl)
+		if err != nil {
+			t.Fatalf("CompileDSL preset %q failed: %v", name, err)
+		}
+		rep, err := ValidateProductionSFX(pcm)
+		if err != nil || !rep.Passed {
+			t.Fatalf("preset %q failed validation: %v (issues: %v)", name, err, rep.Issues)
+		}
+	}
+}
+
+func TestCuratedSFXLibrary(t *testing.T) {
+	sfxFiles := []string{
+		"laser_arcade.sfx",
+		"plasma_gun.sfx",
+		"explosion_arcade.sfx",
+		"explosion_deep.sfx",
+		"coin_pickup.sfx",
+		"gem_shimmer.sfx",
+		"jump_arcade.sfx",
+		"jump_spring.sfx",
+		"sword_clash.sfx",
+		"shield_deflect.sfx",
+		"hit_punch.sfx",
+		"hit_damage.sfx",
+		"powerup_fanfare.sfx",
+		"ui_select.sfx",
+		"ui_confirm.sfx",
+		"ui_error.sfx",
+		"footstep_stone.sfx",
+		"engine_thruster.sfx",
+	}
+
+	for _, file := range sfxFiles {
+		t.Run(file, func(t *testing.T) {
+			score, err := LoadDSLFile(file)
+			if err != nil {
+				t.Fatalf("LoadDSLFile(%q) failed: %v", file, err)
+			}
+			if err := ValidateScore(score); err != nil {
+				t.Fatalf("ValidateScore(%q) failed: %v", file, err)
+			}
+			pcm, err := SynthesizeScore(score)
+			if err != nil {
+				t.Fatalf("SynthesizeScore(%q) failed: %v", file, err)
+			}
+			rep, err := ValidateProductionSFX(pcm)
+			if err != nil || !rep.Passed {
+				t.Fatalf("ValidateProductionSFX(%q) failed: %v (issues: %v)", file, err, rep.Issues)
+			}
+		})
 	}
 }

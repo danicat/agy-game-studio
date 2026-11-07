@@ -20,7 +20,10 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2/audio"
@@ -89,6 +92,105 @@ func main() {
 			score.Title, float64(len(pcm))/float64(BytesPerSecond), *loopFlag)
 		playAudio(pcm, *loopFlag)
 
+	case "validate":
+		validateCmd := flag.NewFlagSet("validate", flag.ExitOnError)
+		if err := validateCmd.Parse(os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error parsing validate flags: %v\n", err)
+			os.Exit(1)
+		}
+
+		var files []string
+		if validateCmd.NArg() > 0 {
+			files = validateCmd.Args()
+		} else {
+			// Find all .sfx files in current directory or parent directories
+			matches, _ := filepath.Glob("*.sfx")
+			if len(matches) == 0 {
+				matches, _ = filepath.Glob("scripts/*.sfx")
+			}
+			files = matches
+		}
+
+		if len(files) == 0 {
+			fmt.Println("No .sfx files found to validate. Validating built-in demo SFX showcase:")
+			score, err := ParseDSL(DemoSFXShowcaseDSL)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "FAIL: ParseDSL failed: %v\n", err)
+				os.Exit(1)
+			}
+			pcm, err := SynthesizeScore(score)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "FAIL: SynthesizeScore failed: %v\n", err)
+				os.Exit(1)
+			}
+			rep, err := ValidateProductionSFX(pcm)
+			printValidationRow("DemoSFXShowcase", rep, err)
+			if err != nil {
+				os.Exit(1)
+			}
+			os.Exit(0)
+		}
+
+		hasErrors := false
+		fmt.Printf("%-7s | %-24s | %-8s | %-15s | %-10s | %-10s | %-8s\n",
+			"STATUS", "CUE / FILE", "DURATION", "PEAK L/R (dBFS)", "RMS (dBFS)", "DC OFFSET", "BOUNDARY")
+		fmt.Println(strings.Repeat("-", 95))
+
+		for _, file := range files {
+			score, err := LoadDSLFile(file)
+			if err != nil {
+				fmt.Printf("FAIL    | %-24s | LOAD ERROR: %v\n", filepath.Base(file), err)
+				hasErrors = true
+				continue
+			}
+			if err := ValidateScore(score); err != nil {
+				fmt.Printf("FAIL    | %-24s | SCORE ERROR: %v\n", filepath.Base(file), err)
+				hasErrors = true
+				continue
+			}
+			pcm, err := SynthesizeScore(score)
+			if err != nil {
+				fmt.Printf("FAIL    | %-24s | SYNTH ERROR: %v\n", filepath.Base(file), err)
+				hasErrors = true
+				continue
+			}
+			rep, err := ValidateProductionSFX(pcm)
+			printValidationRow(filepath.Base(file), rep, err)
+			if err != nil {
+				hasErrors = true
+				for _, iss := range rep.Issues {
+					fmt.Printf("        | -> Issue: %s\n", iss)
+				}
+			}
+		}
+		if hasErrors {
+			os.Exit(1)
+		}
+
+	case "presets", "list-presets":
+		presets := ListSFXPresets()
+		fmt.Printf("Built-in SFX Archetype Presets (%d available):\n", len(presets))
+		fmt.Printf("%-18s | %-10s | %-16s | %-16s | %-8s\n", "PRESET NAME", "WAVE", "SWEEP", "FILTER", "CURVE")
+		fmt.Println(strings.Repeat("-", 80))
+		for _, name := range presets {
+			p, _ := GetSFXPreset(name)
+			sweep := "-"
+			if p.DefaultStartFreq > 0 && p.DefaultEndFreq > 0 {
+				sweep = fmt.Sprintf("%.0f->%.0fHz", p.DefaultStartFreq, p.DefaultEndFreq)
+			}
+			filter := "-"
+			if p.LPFStart > 0 && p.LPFEnd > 0 {
+				filter = fmt.Sprintf("LPF:%.0f->%.0f", p.LPFStart, p.LPFEnd)
+			} else if p.HPFStart > 0 && p.HPFEnd > 0 {
+				filter = fmt.Sprintf("HPF:%.0f->%.0f", p.HPFStart, p.HPFEnd)
+			}
+			curve := p.PitchCurve
+			if curve == "" {
+				curve = "exp"
+			}
+			fmt.Printf("%-18s | %-10s | %-16s | %-16s | %-8s\n", name, p.WaveType, sweep, filter, curve)
+		}
+
 	case "export":
 		exportCmd := flag.NewFlagSet("export", flag.ExitOnError)
 		if err := exportCmd.Parse(os.Args[2:]); err != nil {
@@ -130,12 +232,36 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Println("Procedural SFX DSL Player & WAV Exporter CLI")
+	fmt.Println("Procedural SFX DSL Player, Validator & WAV Exporter CLI")
 	fmt.Println()
 	fmt.Println("Commands:")
 	fmt.Println("  go run ./scripts play [-loop] <cue.sfx>     Play a .sfx DSL file (one-off default)")
 	fmt.Println("  go run ./scripts demo [-loop]               Play built-in arcade SFX showcase")
+	fmt.Println("  go run ./scripts validate [cue.sfx...]      Audit and validate SFX against production standards")
+	fmt.Println("  go run ./scripts presets                    List all 18 built-in archetype presets")
 	fmt.Println("  go run ./scripts export <cue.sfx> <out.wav> Compile .sfx DSL file and export to WAV")
+}
+
+func printValidationRow(name string, rep *SFXValidationReport, err error) {
+	if rep == nil {
+		fmt.Printf("FAIL    | %-24s | NO REPORT: %v\n", name, err)
+		return
+	}
+	status := "PASS"
+	if !rep.Passed || err != nil {
+		status = "FAIL"
+	}
+	boundary := "Clean"
+	if math.Abs(float64(rep.StartSampleLeft)) > 300 || math.Abs(float64(rep.EndSampleLeft)) > 300 {
+		boundary = "Click"
+	}
+	peakStr := fmt.Sprintf("%.1f / %.1f", rep.PeakDBFS, rep.PeakDBFS)
+	if rep.PeakLeft > 0 && rep.PeakRight > 0 {
+		peakStr = fmt.Sprintf("%.1f / %.1f", 20.0*math.Log10(rep.PeakLeft), 20.0*math.Log10(rep.PeakRight))
+	}
+	dcStr := fmt.Sprintf("%+.4f", (rep.DCOffsetLeft+rep.DCOffsetRight)/2.0)
+	fmt.Printf("%-7s | %-24s | %-7.2fs | %-15s | %-9.1f | %-10s | %-8s\n",
+		status, name, rep.DurationSec, peakStr, rep.RMSDBFS, dcStr, boundary)
 }
 
 func playAudio(pcm []byte, loop bool) {

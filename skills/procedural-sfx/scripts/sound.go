@@ -17,11 +17,13 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"math"
 	"math/rand"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -47,10 +49,13 @@ const (
 // Instrument defines a reusable synthesizer patch in the DSL (`inst <name> ...`).
 type Instrument struct {
 	Name               string
-	WaveType           string  // "sine", "square", "triangle", "sawtooth", "noise", "fm"
+	Preset             string  // Built-in archetype preset name (e.g. "arcade_laser")
+	WaveType           string  // "sine", "square", "triangle", "sawtooth", "noise", "psg_noise", "fm"
 	Volume             float64 // 0.0 to 1.0
 	Pan                float64 // -1.0 (left) to +1.0 (right)
-	DutyCycle          float64 // Pulse width (0.0 to 1.0) for square waves
+	DutyStart          float64 // Pulse width at start (0.01 to 0.99)
+	DutyEnd            float64 // Pulse width at end (0.01 to 0.99)
+	DutyCycle          float64 // Fallback single duty cycle
 	Attack             float64 // ADSR Attack in seconds
 	Decay              float64 // ADSR Decay in seconds
 	Sustain            float64 // ADSR Sustain amplitude (0.0 to 1.0)
@@ -59,15 +64,155 @@ type Instrument struct {
 	VibratoDepth       float64 // Vibrato LFO depth in Hz
 	ModRatio           float64 // FM modulator frequency multiplier relative to carrier
 	ModFreq            float64 // Fixed FM modulator frequency in Hz (if ModRatio == 0)
-	ModIndex           float64 // FM modulation index
+	ModIndexStart      float64 // FM modulation index at start
+	ModIndexEnd        float64 // FM modulation index at end
+	ModIndex           float64 // Fallback FM modulation index
 	NoiseFilter        float64 // Single-pole LPF coefficient for noise (0.0 to 1.0]
 	NoiseBlend         float64 // Blend between oscillator (0.0) and filtered noise (1.0)
+	NoiseType          string  // "white" or "psg" (periodic LFSR)
 	DefaultStartFreq   float64 // Default starting frequency in Hz (for drum/SFX triggers)
 	DefaultEndFreq     float64 // Default ending frequency in Hz (for frequency sweeps)
-	LPF                float64 // Optional per-instrument low-pass filter alpha (0.0 to 1.0]
-	HPF                float64 // Optional per-instrument high-pass filter alpha (0.0 to 1.0)
+	PitchCurve         string  // "exp" (default), "lin", "hyper"
+	LPFStart           float64 // Low-pass filter cutoff in Hz (or alpha) at start
+	LPFEnd             float64 // Low-pass filter cutoff in Hz (or alpha) at end
+	LPF                float64 // Optional per-instrument low-pass filter alpha or Hz
+	HPFStart           float64 // High-pass filter cutoff in Hz (or alpha) at start
+	HPFEnd             float64 // High-pass filter cutoff in Hz (or alpha) at end
+	HPF                float64 // Optional per-instrument high-pass filter alpha or Hz
+	ResonanceQ         float64 // SVF filter Q factor (0.5 to 12.0, default 0.707)
 	BitcrushBits       int     // Optional per-instrument bit depth (1..16)
 	BitcrushDownsample int     // Optional per-instrument downsample factor (>=1)
+}
+
+// Built-in curated SFX archetype presets for games
+var sfxPresets = map[string]Instrument{
+	"arcade_laser": {
+		Preset: "arcade_laser", WaveType: "square", Volume: 0.32,
+		DutyStart: 0.50, DutyEnd: 0.15, DutyCycle: 0.50,
+		Attack: 0.002, Decay: 0.05, Sustain: 0.10, Release: 0.04,
+		DefaultStartFreq: 950.0, DefaultEndFreq: 110.0, PitchCurve: "exp",
+	},
+	"plasma_gun": {
+		Preset: "plasma_gun", WaveType: "sawtooth", Volume: 0.30,
+		Attack: 0.003, Decay: 0.07, Sustain: 0.12, Release: 0.05,
+		DefaultStartFreq: 1200.0, DefaultEndFreq: 180.0, PitchCurve: "exp",
+		LPFStart: 3500.0, LPFEnd: 400.0, ResonanceQ: 2.2,
+	},
+	"explosion_arcade": {
+		Preset: "explosion_arcade", WaveType: "psg_noise", Volume: 0.38,
+		Attack: 0.004, Decay: 0.25, Sustain: 0.18, Release: 0.35,
+		DefaultStartFreq: 180.0, DefaultEndFreq: 25.0, PitchCurve: "exp",
+		LPFStart: 1200.0, LPFEnd: 150.0, ResonanceQ: 1.8,
+		NoiseFilter: 0.35, NoiseBlend: 1.0,
+	},
+	"explosion_deep": {
+		Preset: "explosion_deep", WaveType: "sine", Volume: 0.42,
+		Attack: 0.004, Decay: 0.22, Sustain: 0.20, Release: 0.45,
+		DefaultStartFreq: 120.0, DefaultEndFreq: 24.0, PitchCurve: "exp",
+		NoiseFilter: 0.15, NoiseBlend: 0.45,
+	},
+	"jump_arcade": {
+		Preset: "jump_arcade", WaveType: "square", Volume: 0.26,
+		DutyStart: 0.50, DutyEnd: 0.50, DutyCycle: 0.50,
+		Attack: 0.003, Decay: 0.04, Sustain: 0.55, Release: 0.05,
+		DefaultStartFreq: 160.0, DefaultEndFreq: 620.0, PitchCurve: "exp",
+	},
+	"jump_spring": {
+		Preset: "jump_spring", WaveType: "triangle", Volume: 0.28,
+		Attack: 0.004, Decay: 0.06, Sustain: 0.45, Release: 0.06,
+		DefaultStartFreq: 120.0, DefaultEndFreq: 480.0, PitchCurve: "exp",
+		VibratoFreq: 18.0, VibratoDepth: 25.0,
+	},
+	"coin_pickup": {
+		Preset: "coin_pickup", WaveType: "square", Volume: 0.22,
+		DutyStart: 0.50, DutyEnd: 0.50, DutyCycle: 0.50,
+		Attack: 0.002, Decay: 0.025, Sustain: 0.35, Release: 0.035,
+		DefaultStartFreq: 987.77, DefaultEndFreq: 1318.51,
+	},
+	"gem_shimmer": {
+		Preset: "gem_shimmer", WaveType: "fm", Volume: 0.20,
+		ModRatio: 2.76, ModIndexStart: 2.2, ModIndexEnd: 0.2, ModIndex: 2.2,
+		Attack: 0.001, Decay: 0.06, Sustain: 0.15, Release: 0.12,
+		DefaultStartFreq: 1567.98, DefaultEndFreq: 1567.98,
+	},
+	"sword_clash": {
+		Preset: "sword_clash", WaveType: "fm", Volume: 0.32,
+		ModFreq: 620.0, ModIndexStart: 5.5, ModIndexEnd: 0.5, ModIndex: 5.5,
+		Attack: 0.001, Decay: 0.04, Sustain: 0.08, Release: 0.10,
+		DefaultStartFreq: 520.0, DefaultEndFreq: 210.0, PitchCurve: "exp",
+		NoiseBlend: 0.25, NoiseFilter: 0.60,
+	},
+	"shield_deflect": {
+		Preset: "shield_deflect", WaveType: "fm", Volume: 0.30,
+		ModRatio: 3.1415, ModIndexStart: 4.0, ModIndexEnd: 0.2, ModIndex: 4.0,
+		Attack: 0.001, Decay: 0.035, Sustain: 0.06, Release: 0.15,
+		DefaultStartFreq: 880.0, DefaultEndFreq: 440.0, PitchCurve: "exp",
+	},
+	"hit_punch": {
+		Preset: "hit_punch", WaveType: "triangle", Volume: 0.35,
+		Attack: 0.002, Decay: 0.035, Sustain: 0.10, Release: 0.04,
+		DefaultStartFreq: 180.0, DefaultEndFreq: 45.0, PitchCurve: "hyper",
+		NoiseBlend: 0.30, NoiseFilter: 0.45,
+	},
+	"hit_damage": {
+		Preset: "hit_damage", WaveType: "sawtooth", Volume: 0.32,
+		Attack: 0.003, Decay: 0.05, Sustain: 0.15, Release: 0.06,
+		DefaultStartFreq: 220.0, DefaultEndFreq: 65.0, PitchCurve: "exp",
+		NoiseBlend: 0.38, NoiseFilter: 0.30,
+	},
+	"powerup_fanfare": {
+		Preset: "powerup_fanfare", WaveType: "square", Volume: 0.24,
+		DutyStart: 0.35, DutyEnd: 0.35, DutyCycle: 0.35,
+		Attack: 0.004, Decay: 0.035, Sustain: 0.65, Release: 0.06,
+		DefaultStartFreq: 523.25, DefaultEndFreq: 1046.50,
+	},
+	"ui_select": {
+		Preset: "ui_select", WaveType: "sine", Volume: 0.18,
+		Attack: 0.001, Decay: 0.012, Sustain: 0.0, Release: 0.008,
+		DefaultStartFreq: 880.0, DefaultEndFreq: 1100.0, PitchCurve: "lin",
+	},
+	"ui_confirm": {
+		Preset: "ui_confirm", WaveType: "square", Volume: 0.20,
+		DutyStart: 0.50, DutyEnd: 0.50, DutyCycle: 0.50,
+		Attack: 0.002, Decay: 0.025, Sustain: 0.25, Release: 0.03,
+		DefaultStartFreq: 659.25, DefaultEndFreq: 1318.51,
+	},
+	"ui_error": {
+		Preset: "ui_error", WaveType: "sawtooth", Volume: 0.24,
+		Attack: 0.004, Decay: 0.045, Sustain: 0.40, Release: 0.05,
+		DefaultStartFreq: 150.0, DefaultEndFreq: 110.0, PitchCurve: "lin",
+	},
+	"footstep_stone": {
+		Preset: "footstep_stone", WaveType: "noise", Volume: 0.28,
+		Attack: 0.002, Decay: 0.03, Sustain: 0.0, Release: 0.015,
+		NoiseFilter: 0.25, NoiseBlend: 1.0,
+	},
+	"engine_thruster": {
+		Preset: "engine_thruster", WaveType: "psg_noise", Volume: 0.30,
+		Attack: 0.03, Decay: 0.08, Sustain: 0.80, Release: 0.10,
+		DefaultStartFreq: 110.0, DefaultEndFreq: 110.0,
+		NoiseFilter: 0.35, NoiseBlend: 1.0,
+	},
+}
+
+// GetSFXPreset returns a copy of a built-in archetype preset patch.
+func GetSFXPreset(name string) (Instrument, bool) {
+	lower := strings.ToLower(strings.TrimSpace(name))
+	p, ok := sfxPresets[lower]
+	if !ok {
+		return Instrument{}, false
+	}
+	return p, true
+}
+
+// ListSFXPresets returns sorted names of all built-in SFX archetype presets.
+func ListSFXPresets() []string {
+	names := make([]string, 0, len(sfxPresets))
+	for k := range sfxPresets {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // PitchSweep represents a stationary note (StartFreq == EndFreq) or a continuous pitch glide.
@@ -148,10 +293,13 @@ func LoadDSLFile(filepath string) (*Score, error) {
 	return ParseDSL(string(data))
 }
 
-// CompileDSL parses a DSL script and synthesizes it into a 4-byte aligned 16-bit 44.1kHz stereo PCM buffer.
+// CompileDSL parses a DSL script, validates score structures, and synthesizes it into a 4-byte aligned 16-bit 44.1kHz stereo PCM buffer.
 func CompileDSL(dslText string) ([]byte, error) {
 	score, err := ParseDSL(dslText)
 	if err != nil {
+		return nil, err
+	}
+	if err := ValidateScore(score); err != nil {
 		return nil, err
 	}
 	return SynthesizeScore(score)
@@ -495,12 +643,16 @@ func parseInstrumentOrStepAttrs(name, attrText string, bpm float64, isStep bool)
 		Name:        name,
 		Volume:      0.2,
 		Pan:         0.0,
+		DutyStart:   0.5,
+		DutyEnd:     0.5,
 		DutyCycle:   0.5,
 		Attack:      0.005,
 		Decay:       0.04,
 		Sustain:     0.7,
 		Release:     0.03,
 		NoiseFilter: 1.0,
+		PitchCurve:  "exp",
+		ResonanceQ:  0.7071,
 	}
 	var durSec float64
 	hasWave := false
@@ -512,6 +664,27 @@ func parseInstrumentOrStepAttrs(name, attrText string, bpm float64, isStep bool)
 		return inst, 0, fmt.Errorf("missing attributes")
 	}
 
+	// First pass: scan for preset=<name> or template=<name>
+	for _, field := range fields {
+		eq := strings.IndexByte(field, '=')
+		if eq <= 0 || eq == len(field)-1 {
+			continue
+		}
+		key := strings.ToLower(field[:eq])
+		val := field[eq+1:]
+		if key == "preset" || key == "template" || key == "archetype" {
+			p, ok := GetSFXPreset(val)
+			if !ok {
+				return inst, 0, fmt.Errorf("unknown preset %q (available: %s)", val, strings.Join(ListSFXPresets(), ", "))
+			}
+			origName := inst.Name
+			inst = p
+			inst.Name = origName
+			hasWave = true
+			break
+		}
+	}
+
 	for _, field := range fields {
 		eq := strings.IndexByte(field, '=')
 		if eq <= 0 || eq == len(field)-1 {
@@ -521,13 +694,24 @@ func parseInstrumentOrStepAttrs(name, attrText string, bpm float64, isStep bool)
 		val := field[eq+1:]
 
 		switch key {
+		case "preset", "template", "archetype":
+			// Already processed in first pass
+			continue
+
 		case "wave", "wave_type":
-			w, err := normalizeWaveType(val)
-			if err != nil {
-				return inst, 0, err
+			if p, ok := GetSFXPreset(val); ok {
+				origName := inst.Name
+				inst = p
+				inst.Name = origName
+				hasWave = true
+			} else {
+				w, err := normalizeWaveType(val)
+				if err != nil {
+					return inst, 0, err
+				}
+				inst.WaveType = w
+				hasWave = true
 			}
-			inst.WaveType = w
-			hasWave = true
 
 		case "vol", "volume":
 			v, err := strconv.ParseFloat(val, 64)
@@ -544,13 +728,26 @@ func parseInstrumentOrStepAttrs(name, attrText string, bpm float64, isStep bool)
 			inst.Pan = p
 
 		case "duty", "duty_cycle":
-			d, err := strconv.ParseFloat(val, 64)
-			if err != nil || d <= 0.0 || d >= 1.0 {
-				return inst, 0, fmt.Errorf("invalid duty cycle %q (must be in (0.0, 1.0))", val)
+			if arrowIdx := strings.Index(val, "->"); arrowIdx > 0 {
+				d1, err1 := strconv.ParseFloat(val[:arrowIdx], 64)
+				d2, err2 := strconv.ParseFloat(val[arrowIdx+2:], 64)
+				if err1 != nil || err2 != nil || d1 <= 0.0 || d1 >= 1.0 || d2 <= 0.0 || d2 >= 1.0 {
+					return inst, 0, fmt.Errorf("invalid duty sweep %q (must be in (0.0, 1.0))", val)
+				}
+				inst.DutyStart = d1
+				inst.DutyEnd = d2
+				inst.DutyCycle = d1
+			} else {
+				d, err := strconv.ParseFloat(val, 64)
+				if err != nil || d <= 0.0 || d >= 1.0 {
+					return inst, 0, fmt.Errorf("invalid duty cycle %q (must be in (0.0, 1.0))", val)
+				}
+				inst.DutyStart = d
+				inst.DutyEnd = d
+				inst.DutyCycle = d
 			}
-			inst.DutyCycle = d
 
-		case "adsr":
+		case "adsr", "env":
 			parts := strings.Split(val, ",")
 			if len(parts) != 4 {
 				return inst, 0, fmt.Errorf("invalid adsr %q (expected attack,decay,sustain,release)", val)
@@ -595,6 +792,13 @@ func parseInstrumentOrStepAttrs(name, attrText string, bpm float64, isStep bool)
 			}
 			inst.Release = r
 
+		case "curve", "pitch_curve":
+			c := strings.ToLower(val)
+			if c != "exp" && c != "lin" && c != "hyper" {
+				return inst, 0, fmt.Errorf("invalid pitch curve %q (expected 'exp', 'lin', or 'hyper')", val)
+			}
+			inst.PitchCurve = c
+
 		case "vib", "vibrato":
 			parts := strings.Split(val, ",")
 			if len(parts) != 2 {
@@ -629,11 +833,25 @@ func parseInstrumentOrStepAttrs(name, attrText string, bpm float64, isStep bool)
 			if len(parts) != 2 {
 				return inst, 0, fmt.Errorf("invalid fm %q (expected ratioOrHz,modIndex)", val)
 			}
-			mi, err2 := strconv.ParseFloat(parts[1], 64)
-			if err2 != nil || mi < 0 {
-				return inst, 0, fmt.Errorf("invalid fm mod_index in %q", val)
+			modIdxStr := parts[1]
+			if arrowIdx := strings.Index(modIdxStr, "->"); arrowIdx > 0 {
+				m1, err1 := strconv.ParseFloat(modIdxStr[:arrowIdx], 64)
+				m2, err2 := strconv.ParseFloat(modIdxStr[arrowIdx+2:], 64)
+				if err1 != nil || err2 != nil || m1 < 0 || m2 < 0 {
+					return inst, 0, fmt.Errorf("invalid fm mod_index sweep in %q", val)
+				}
+				inst.ModIndexStart = m1
+				inst.ModIndexEnd = m2
+				inst.ModIndex = m1
+			} else {
+				mi, err2 := strconv.ParseFloat(modIdxStr, 64)
+				if err2 != nil || mi < 0 {
+					return inst, 0, fmt.Errorf("invalid fm mod_index in %q", val)
+				}
+				inst.ModIndexStart = mi
+				inst.ModIndexEnd = mi
+				inst.ModIndex = mi
 			}
-			inst.ModIndex = mi
 			if strings.HasSuffix(strings.ToLower(parts[0]), "hz") {
 				mf, err1 := parseHzNumber(parts[0])
 				if err1 != nil || mf <= 0 {
@@ -663,11 +881,24 @@ func parseInstrumentOrStepAttrs(name, attrText string, bpm float64, isStep bool)
 			inst.ModFreq = mf
 
 		case "mod_index":
-			mi, err := strconv.ParseFloat(val, 64)
-			if err != nil || mi < 0 {
-				return inst, 0, fmt.Errorf("invalid mod_index %q", val)
+			if arrowIdx := strings.Index(val, "->"); arrowIdx > 0 {
+				m1, err1 := strconv.ParseFloat(val[:arrowIdx], 64)
+				m2, err2 := strconv.ParseFloat(val[arrowIdx+2:], 64)
+				if err1 != nil || err2 != nil || m1 < 0 || m2 < 0 {
+					return inst, 0, fmt.Errorf("invalid mod_index sweep %q", val)
+				}
+				inst.ModIndexStart = m1
+				inst.ModIndexEnd = m2
+				inst.ModIndex = m1
+			} else {
+				mi, err := strconv.ParseFloat(val, 64)
+				if err != nil || mi < 0 {
+					return inst, 0, fmt.Errorf("invalid mod_index %q", val)
+				}
+				inst.ModIndexStart = mi
+				inst.ModIndexEnd = mi
+				inst.ModIndex = mi
 			}
-			inst.ModIndex = mi
 
 		case "noise":
 			parts := strings.Split(val, ",")
@@ -698,19 +929,52 @@ func parseInstrumentOrStepAttrs(name, attrText string, bpm float64, isStep bool)
 			inst.NoiseBlend = nb
 			hasExplicitNoiseBlend = true
 
-		case "lpf":
-			alpha, err := strconv.ParseFloat(val, 64)
-			if err != nil || alpha <= 0 || alpha > 1.0 {
-				return inst, 0, fmt.Errorf("invalid lpf %q (must be in (0.0, 1.0])", val)
+		case "q", "res", "resonance":
+			q, err := strconv.ParseFloat(val, 64)
+			if err != nil || q < 0.1 || q > 20.0 {
+				return inst, 0, fmt.Errorf("invalid filter resonance q %q (expected 0.1 to 20.0)", val)
 			}
-			inst.LPF = alpha
+			inst.ResonanceQ = q
+
+		case "lpf":
+			if arrowIdx := strings.Index(val, "->"); arrowIdx > 0 {
+				f1, err1 := parseFilterFreqOrAlpha(val[:arrowIdx])
+				f2, err2 := parseFilterFreqOrAlpha(val[arrowIdx+2:])
+				if err1 != nil || err2 != nil {
+					return inst, 0, fmt.Errorf("invalid lpf sweep %q", val)
+				}
+				inst.LPFStart = f1
+				inst.LPFEnd = f2
+				inst.LPF = f1
+			} else {
+				f, err := parseFilterFreqOrAlpha(val)
+				if err != nil {
+					return inst, 0, fmt.Errorf("invalid lpf %q: %w", val, err)
+				}
+				inst.LPFStart = f
+				inst.LPFEnd = f
+				inst.LPF = f
+			}
 
 		case "hpf":
-			alpha, err := strconv.ParseFloat(val, 64)
-			if err != nil || alpha <= 0 || alpha >= 1.0 {
-				return inst, 0, fmt.Errorf("invalid hpf %q (must be in (0.0, 1.0))", val)
+			if arrowIdx := strings.Index(val, "->"); arrowIdx > 0 {
+				f1, err1 := parseFilterFreqOrAlpha(val[:arrowIdx])
+				f2, err2 := parseFilterFreqOrAlpha(val[arrowIdx+2:])
+				if err1 != nil || err2 != nil {
+					return inst, 0, fmt.Errorf("invalid hpf sweep %q", val)
+				}
+				inst.HPFStart = f1
+				inst.HPFEnd = f2
+				inst.HPF = f1
+			} else {
+				f, err := parseFilterFreqOrAlpha(val)
+				if err != nil {
+					return inst, 0, fmt.Errorf("invalid hpf %q: %w", val, err)
+				}
+				inst.HPFStart = f
+				inst.HPFEnd = f
+				inst.HPF = f
 			}
-			inst.HPF = alpha
 
 		case "bitcrush":
 			parts := strings.Split(val, ",")
@@ -731,9 +995,9 @@ func parseInstrumentOrStepAttrs(name, attrText string, bpm float64, isStep bool)
 	}
 
 	if !hasWave {
-		return inst, 0, fmt.Errorf("missing required 'wave=<type>' attribute")
+		return inst, 0, fmt.Errorf("missing required 'wave=<type>' or 'preset=<name>' attribute")
 	}
-	if inst.WaveType == "noise" && !hasExplicitNoiseBlend {
+	if (inst.WaveType == "noise" || inst.WaveType == "psg_noise" || inst.WaveType == "periodic_noise") && !hasExplicitNoiseBlend {
 		inst.NoiseBlend = 1.0
 	}
 	if isStep && !hasDur {
@@ -752,13 +1016,28 @@ func normalizeWaveType(w string) (string, error) {
 		return "triangle", nil
 	case "sawtooth", "saw":
 		return "sawtooth", nil
-	case "noise":
+	case "noise", "white_noise":
 		return "noise", nil
+	case "psg_noise", "periodic_noise", "psg":
+		return "psg_noise", nil
 	case "fm":
 		return "fm", nil
 	default:
-		return "", fmt.Errorf("unsupported wave type %q (valid: sine, square, pulse, triangle, sawtooth, noise, fm)", w)
+		return "", fmt.Errorf("unsupported wave type %q (valid: sine, square, pulse, triangle, sawtooth, noise, psg_noise, fm, or preset name)", w)
 	}
+}
+
+func parseFilterFreqOrAlpha(s string) (float64, error) {
+	trimmed := strings.TrimSpace(s)
+	lower := strings.ToLower(trimmed)
+	if strings.HasSuffix(lower, "hz") {
+		return parseHzNumber(trimmed)
+	}
+	val, err := strconv.ParseFloat(trimmed, 64)
+	if err != nil || val <= 0 {
+		return 0, fmt.Errorf("invalid filter frequency or alpha %q", s)
+	}
+	return val, nil
 }
 
 func parseHzNumber(s string) (float64, error) {
@@ -1250,8 +1529,12 @@ func (s *Score) parseSingleAtomEvent(atom, defaultInst, fallbackDur string, tran
 		}, durStr, nil
 	}
 
-	// 4. Check for bare Instrument Trigger: 'kick:8', 'snare:16', 'hat:16'
-	if inst, ok := s.Instruments[head]; ok {
+	// 4. Check for bare Instrument Trigger: 'kick:8', 'snare:16', 'hat:16', or track default trigger ':80ms'
+	instName := head
+	if instName == "" {
+		instName = defaultInst
+	}
+	if inst, ok := s.Instruments[instName]; ok {
 		startHz := inst.DefaultStartFreq
 		endHz := inst.DefaultEndFreq
 		if startHz <= 0 {
@@ -1304,6 +1587,158 @@ func AlignPCMOffset(offset int64) int64 {
 	return offset &^ 3
 }
 
+// polyBLEP computes a polynomial band-limited step correction around phase discontinuities
+// at t=0 and t=duty, eliminating ultrasonic square/pulse and sawtooth aliasing in digital SFX synthesis.
+func polyBLEP(t, dt float64) float64 {
+	if dt <= 0 {
+		return 0
+	}
+	if t < dt {
+		u := t / dt
+		return u + u - u*u - 1.0
+	} else if t > 1.0-dt {
+		u := (t - 1.0) / dt
+		return u*u + u + u + 1.0
+	}
+	return 0.0
+}
+
+// LFSRNoise produces authentic chiptune pseudo-random periodic or white noise using
+// a 16-bit Linear Feedback Shift Register (Galois configuration), replicating classic PSG sound chips.
+type LFSRNoise struct {
+	lfsr  uint32
+	phase float64
+	val   float64
+}
+
+// NewLFSRNoise instantiates a new 16-bit Galois LFSR noise generator.
+func NewLFSRNoise(seed uint32) *LFSRNoise {
+	if seed == 0 {
+		seed = 0x89abcdef
+	}
+	bit := (seed ^ (seed >> 1)) & 1
+	seed = (seed >> 1) | (bit << 15)
+	val := float64(bit)*2.0 - 1.0
+	return &LFSRNoise{lfsr: seed, val: val}
+}
+
+// Next advances the shift register at the specified clock frequency in Hz.
+func (n *LFSRNoise) Next(freq float64) float64 {
+	if freq <= 0 || freq >= SampleRate {
+		bit := (n.lfsr ^ (n.lfsr >> 1)) & 1
+		n.lfsr = (n.lfsr >> 1) | (bit << 15)
+		n.val = float64(bit)*2.0 - 1.0
+		return n.val
+	}
+	n.phase += freq / SampleRate
+	for n.phase >= 1.0 {
+		n.phase -= 1.0
+		bit := (n.lfsr ^ (n.lfsr >> 1)) & 1
+		n.lfsr = (n.lfsr >> 1) | (bit << 15)
+		n.val = float64(bit)*2.0 - 1.0
+	}
+	return n.val
+}
+
+// SVFilter is a Chamberlin State Variable Filter supporting dynamic cutoff frequency
+// and resonance Q sweeps without numerical instability or blow-up.
+type SVFilter struct {
+	s1, s2 float64
+}
+
+// Process filters a single sample through the SVF in low-pass ("lp"), high-pass ("hp"), or band-pass ("bp") mode.
+func (f *SVFilter) Process(in, cutoffHz, q float64, mode string) float64 {
+	if cutoffHz < 10.0 {
+		cutoffHz = 10.0
+	} else if cutoffHz > SampleRate*0.48 {
+		cutoffHz = SampleRate * 0.48
+	}
+	if q < 0.1 {
+		q = 0.707
+	} else if q > 20.0 {
+		q = 20.0
+	}
+
+	fCoeff := 2.0 * math.Sin(math.Pi*cutoffHz/SampleRate)
+	qDamp := 1.0 / q
+
+	hp := in - f.s1*qDamp - f.s2
+	bp := hp*fCoeff + f.s1
+	lp := bp*fCoeff + f.s2
+
+	f.s1 = bp
+	f.s2 = lp
+
+	if math.IsNaN(f.s1) || math.IsInf(f.s1, 0) {
+		f.s1 = 0
+	}
+	if math.IsNaN(f.s2) || math.IsInf(f.s2, 0) {
+		f.s2 = 0
+	}
+
+	switch mode {
+	case "hp", "hpf":
+		return hp
+	case "bp", "bpf":
+		return bp
+	case "lp", "lpf":
+		fallthrough
+	default:
+		return lp
+	}
+}
+
+// SoftClip applies smooth C^1 compression above threshold 0.75,
+// preventing digital harshness or overflow while retaining full dynamic range.
+func SoftClip(x float64) float64 {
+	const threshold = 0.75
+	if x > threshold {
+		delta := x - threshold
+		return threshold + (1.0-threshold)*math.Tanh(delta/(1.0-threshold))
+	} else if x < -threshold {
+		delta := -x - threshold
+		return -(threshold + (1.0-threshold)*math.Tanh(delta/(1.0-threshold)))
+	}
+	return x
+}
+
+// applyAntiClickRamp applies a smooth 44-frame (~1ms at 44.1kHz) micro-fade
+// at the start and end of the PCM buffer, ensuring sample 0 and the final sample
+// are smoothly anchored near zero, eliminating speaker pops when sound effects trigger in Ebitengine.
+func applyAntiClickRamp(pcm []byte) {
+	alignedLen := len(pcm) &^ 3
+	numFrames := alignedLen / BytesPerFrame
+	const rampFrames = 44
+	if numFrames < rampFrames*2 {
+		return
+	}
+
+	for i := 0; i < rampFrames; i++ {
+		rampIn := float64(i) / float64(rampFrames)
+		idxIn := i * BytesPerFrame
+		leftIn := int16(uint16(pcm[idxIn]) | (uint16(pcm[idxIn+1]) << 8))
+		rightIn := int16(uint16(pcm[idxIn+2]) | (uint16(pcm[idxIn+3]) << 8))
+		leftIn = int16(float64(leftIn) * rampIn)
+		rightIn = int16(float64(rightIn) * rampIn)
+		pcm[idxIn] = byte(leftIn)
+		pcm[idxIn+1] = byte(leftIn >> 8)
+		pcm[idxIn+2] = byte(rightIn)
+		pcm[idxIn+3] = byte(rightIn >> 8)
+
+		outFrameIdx := numFrames - 1 - i
+		rampOut := float64(i) / float64(rampFrames)
+		idxOut := outFrameIdx * BytesPerFrame
+		leftOut := int16(uint16(pcm[idxOut]) | (uint16(pcm[idxOut+1]) << 8))
+		rightOut := int16(uint16(pcm[idxOut+2]) | (uint16(pcm[idxOut+3]) << 8))
+		leftOut = int16(float64(leftOut) * rampOut)
+		rightOut = int16(float64(rightOut) * rampOut)
+		pcm[idxOut] = byte(leftOut)
+		pcm[idxOut+1] = byte(leftOut >> 8)
+		pcm[idxOut+2] = byte(rightOut)
+		pcm[idxOut+3] = byte(rightOut >> 8)
+	}
+}
+
 // SynthesizeScore renders all tracks of a parsed Score into a 4-byte aligned 16-bit 44.1kHz stereo PCM buffer.
 func SynthesizeScore(score *Score) ([]byte, error) {
 	if score == nil || len(score.Tracks) == 0 {
@@ -1339,6 +1774,8 @@ func SynthesizeScore(score *Score) ([]byte, error) {
 		}
 		mixed = sliced
 	}
+
+	applyAntiClickRamp(mixed)
 
 	return mixed[:len(mixed)&^3], nil
 }
@@ -1406,6 +1843,7 @@ func renderNoteEventInto(out []byte, numSamples int, ev NoteEvent, rngSeed int64
 	modPhases := make([]float64, numVoices)
 	var filterVal float64
 	rng := rand.New(rand.NewSource(rngSeed))
+	lfsr := NewLFSRNoise(uint32(rngSeed ^ 0x9e3779b9))
 
 	filterCoeff := inst.NoiseFilter
 	if filterCoeff <= 0 || filterCoeff > 1.0 {
@@ -1418,26 +1856,94 @@ func renderNoteEventInto(out []byte, numSamples int, ev NoteEvent, rngSeed int64
 		blend = 1.0
 	}
 
+	dutyStart := inst.DutyStart
+	dutyEnd := inst.DutyEnd
+	if dutyStart <= 0 || dutyStart >= 1.0 {
+		dutyStart = inst.DutyCycle
+		if dutyStart <= 0 || dutyStart >= 1.0 {
+			dutyStart = 0.5
+		}
+	}
+	if dutyEnd <= 0 || dutyEnd >= 1.0 {
+		dutyEnd = dutyStart
+	}
+
+	modStart := inst.ModIndexStart
+	modEnd := inst.ModIndexEnd
+	if modStart <= 0 {
+		modStart = inst.ModIndex
+		if modStart <= 0 {
+			modStart = 2.0
+		}
+	}
+	if modEnd <= 0 {
+		modEnd = modStart
+	}
+
+	lpfStart := inst.LPFStart
+	lpfEnd := inst.LPFEnd
+	if lpfStart <= 0 && inst.LPF > 1.0 {
+		lpfStart = inst.LPF
+	}
+	if lpfEnd <= 0 {
+		lpfEnd = lpfStart
+	}
+	hasLPFSVF := lpfStart > 0 && lpfEnd > 0
+	var svfLPF SVFilter
+
+	hpfStart := inst.HPFStart
+	hpfEnd := inst.HPFEnd
+	if hpfStart <= 0 && inst.HPF > 1.0 {
+		hpfStart = inst.HPF
+	}
+	if hpfEnd <= 0 {
+		hpfEnd = hpfStart
+	}
+	hasHPFSVF := hpfStart > 0 && hpfEnd > 0
+	var svfHPF SVFilter
+
+	q := inst.ResonanceQ
+	if q < 0.1 {
+		q = 0.707
+	}
+
 	for i := 0; i < numSamples; i++ {
 		t := float64(i) / SampleRate
 		progress := t / durSec
 
+		currentDuty := dutyStart + progress*(dutyEnd-dutyStart)
+		currentModIndex := modStart + progress*(modEnd-modStart)
+
 		var voiceSum float64
 		for vIdx, sw := range ev.Pitches {
 			var currentFreq float64
-			if sw.StartFreq == sw.EndFreq {
-				currentFreq = sw.StartFreq
-			} else if sw.StartFreq > 0 && sw.EndFreq > 0 {
-				currentFreq = sw.StartFreq * math.Pow(sw.EndFreq/sw.StartFreq, progress)
-			} else {
+			switch inst.PitchCurve {
+			case "lin", "linear":
 				currentFreq = sw.StartFreq + progress*(sw.EndFreq-sw.StartFreq)
+			case "hyper", "hyperbolic":
+				if sw.StartFreq > 0 && sw.EndFreq > 0 {
+					currentFreq = sw.StartFreq / (1.0 + progress*(sw.StartFreq/sw.EndFreq-1.0))
+				} else {
+					currentFreq = sw.StartFreq + progress*(sw.EndFreq-sw.StartFreq)
+				}
+			case "exp", "exponential":
+				fallthrough
+			default:
+				if sw.StartFreq == sw.EndFreq {
+					currentFreq = sw.StartFreq
+				} else if sw.StartFreq > 0 && sw.EndFreq > 0 {
+					currentFreq = sw.StartFreq * math.Pow(sw.EndFreq/sw.StartFreq, progress)
+				} else {
+					currentFreq = sw.StartFreq + progress*(sw.EndFreq-sw.StartFreq)
+				}
 			}
 
 			if inst.VibratoFreq > 0 && inst.VibratoDepth > 0 {
 				currentFreq += math.Sin(2.0*math.Pi*inst.VibratoFreq*t) * inst.VibratoDepth
 			}
 
-			phases[vIdx] += currentFreq / SampleRate
+			dt := currentFreq / SampleRate
+			phases[vIdx] += dt
 			for phases[vIdx] >= 1.0 {
 				phases[vIdx] -= 1.0
 			}
@@ -1461,24 +1967,19 @@ func renderNoteEventInto(out []byte, numSamples int, ev NoteEvent, rngSeed int64
 			var oscAmp float64
 			switch inst.WaveType {
 			case "fm":
-				modIndex := inst.ModIndex
-				if modIndex <= 0 {
-					modIndex = 2.0
-				}
 				modSample := math.Sin(2.0 * math.Pi * modPhases[vIdx])
-				oscAmp = math.Sin(2.0*math.Pi*phase + modIndex*modSample)
+				oscAmp = math.Sin(2.0*math.Pi*phase + currentModIndex*modSample)
 			case "sine":
 				oscAmp = math.Sin(2.0 * math.Pi * phase)
 			case "square":
-				duty := inst.DutyCycle
-				if duty <= 0 || duty >= 1.0 {
-					duty = 0.5
+				raw := -1.0
+				if phase < currentDuty {
+					raw = 1.0
 				}
-				if phase < duty {
-					oscAmp = 1.0
-				} else {
-					oscAmp = -1.0
-				}
+				raw += polyBLEP(phase, dt)
+				raw -= polyBLEP(math.Mod(phase+1.0-currentDuty, 1.0), dt)
+				dc := 2.0*currentDuty - 1.0
+				oscAmp = (raw - dc) * 0.85
 			case "triangle":
 				if phase < 0.5 {
 					oscAmp = 4.0*phase - 1.0
@@ -1486,7 +1987,9 @@ func renderNoteEventInto(out []byte, numSamples int, ev NoteEvent, rngSeed int64
 					oscAmp = 3.0 - 4.0*phase
 				}
 			case "sawtooth":
-				oscAmp = 2.0*phase - 1.0
+				oscAmp = (2.0*phase - 1.0) - polyBLEP(phase, dt)
+			case "psg_noise":
+				oscAmp = lfsr.Next(currentFreq)
 			default:
 				oscAmp = math.Sin(2.0 * math.Pi * phase)
 			}
@@ -1494,12 +1997,33 @@ func renderNoteEventInto(out []byte, numSamples int, ev NoteEvent, rngSeed int64
 			voiceSum += oscAmp * voiceScale
 		}
 
-		rawNoise := rng.Float64()*2.0 - 1.0
+		var rawNoise float64
+		if inst.NoiseType == "psg" {
+			rawNoise = lfsr.Next(1000.0)
+		} else {
+			rawNoise = rng.Float64()*2.0 - 1.0
+		}
 		filterVal += filterCoeff * (rawNoise - filterVal)
 
 		amp := (1.0-blend)*voiceSum + blend*filterVal
+
+		if hasLPFSVF {
+			curLPF := lpfStart
+			if lpfStart != lpfEnd && lpfStart > 0 && lpfEnd > 0 {
+				curLPF = lpfStart * math.Pow(lpfEnd/lpfStart, progress)
+			}
+			amp = svfLPF.Process(amp, curLPF, q, "lp")
+		}
+		if hasHPFSVF {
+			curHPF := hpfStart
+			if hpfStart != hpfEnd && hpfStart > 0 && hpfEnd > 0 {
+				curHPF = hpfStart * math.Pow(hpfEnd/hpfStart, progress)
+			}
+			amp = svfHPF.Process(amp, curHPF, q, "hp")
+		}
+
 		env := getEnvelope(t, durSec, inst.Attack, inst.Decay, inst.Sustain, inst.Release)
-		finalAmp := amp * env * vol
+		finalAmp := SoftClip(amp * env * vol)
 
 		leftVal := int16(math.Max(-1.0, math.Min(1.0, finalAmp*leftPan)) * 32760)
 		rightVal := int16(math.Max(-1.0, math.Min(1.0, finalAmp*rightPan)) * 32760)
@@ -1511,11 +2035,11 @@ func renderNoteEventInto(out []byte, numSamples int, ev NoteEvent, rngSeed int64
 		out[idx+3] = byte(rightVal >> 8)
 	}
 
-	if inst.LPF > 0 {
+	if !hasLPFSVF && inst.LPF > 0 && inst.LPF <= 1.0 {
 		filtered := ApplyLowPassFilter(out, inst.LPF)
 		copy(out, filtered)
 	}
-	if inst.HPF > 0 {
+	if !hasHPFSVF && inst.HPF > 0 && inst.HPF < 1.0 {
 		filtered := ApplyHighPassFilter(out, inst.HPF)
 		copy(out, filtered)
 	}
@@ -1525,7 +2049,7 @@ func renderNoteEventInto(out []byte, numSamples int, ev NoteEvent, rngSeed int64
 	}
 }
 
-// MixTracksPCM sums multiple stereo 16-bit PCM byte slices with 32-bit hard clamping and 4-byte alignment.
+// MixTracksPCM sums multiple stereo 16-bit PCM byte slices with smooth C^1 soft-clipping and 4-byte alignment.
 func MixTracksPCM(tracks [][]byte) []byte {
 	maxLen := 0
 	for _, t := range tracks {
@@ -1538,21 +2062,18 @@ func MixTracksPCM(tracks [][]byte) []byte {
 	result := make([]byte, maxLen)
 
 	for i := 0; i < maxLen; i += 2 {
-		var sum int32
+		var sum float64
 		for _, t := range tracks {
 			alignedTrackLen := len(t) &^ 3
 			if i+1 < alignedTrackLen {
 				sample := int16(uint16(t[i]) | (uint16(t[i+1]) << 8))
-				sum += int32(sample)
+				sum += float64(sample) / 32767.0
 			}
 		}
-		if sum > 32767 {
-			sum = 32767
-		} else if sum < -32768 {
-			sum = -32768
-		}
-		result[i] = byte(sum)
-		result[i+1] = byte(sum >> 8)
+		clipped := SoftClip(sum)
+		outVal := int16(clipped * 32760.0)
+		result[i] = byte(outVal)
+		result[i+1] = byte(outVal >> 8)
 	}
 	return result
 }
@@ -1910,4 +2431,170 @@ func ExportWAV(filename string, pcm []byte) (retErr error) {
 	}
 	_, err = f.Write(pcm)
 	return err
+}
+
+// ============================================================================
+// 6. PRODUCTION SFX AUDIT & VALIDATION ENGINE
+// ============================================================================
+
+// SFXValidationReport contains acoustic and DSP diagnostics for a synthesized sound effect.
+type SFXValidationReport struct {
+	TotalFrames      int
+	DurationSec      float64
+	PeakLeft         float64 // 0.0 to 1.0 linear amplitude
+	PeakRight        float64 // 0.0 to 1.0 linear amplitude
+	PeakDBFS         float64 // dB relative to full scale (0 dBFS = max)
+	RMSLeft          float64
+	RMSRight         float64
+	RMSDBFS          float64
+	DCOffsetLeft     float64
+	DCOffsetRight    float64
+	StartSampleLeft  int16
+	StartSampleRight int16
+	EndSampleLeft    int16
+	EndSampleRight   int16
+	Passed           bool
+	Issues           []string
+}
+
+// ValidateProductionSFX audits a synthesized PCM buffer against production game audio standards:
+// 1. Strict 4-byte frame alignment and non-empty length.
+// 2. Playback duration between 5ms and 15.0s.
+// 3. Amplitude headroom: true peak between -36 dBFS (not silent) and -0.01 dBFS (no digital clipping).
+// 4. DC offset under 0.02 (2% full scale) preventing sub-bass speaker excursion and gate clicks.
+// 5. Anti-click boundary zero-crossings: initial and final frames smoothly anchored near zero.
+func ValidateProductionSFX(pcm []byte) (*SFXValidationReport, error) {
+	rep := &SFXValidationReport{Passed: true}
+	if len(pcm) == 0 {
+		rep.Passed = false
+		rep.Issues = append(rep.Issues, "PCM buffer is empty (0 bytes)")
+		return rep, errors.New(strings.Join(rep.Issues, "; "))
+	}
+	if len(pcm)%4 != 0 {
+		rep.Passed = false
+		rep.Issues = append(rep.Issues, fmt.Sprintf("PCM buffer is not 4-byte frame aligned (%d bytes)", len(pcm)))
+	}
+
+	alignedLen := len(pcm) &^ 3
+	numFrames := alignedLen / BytesPerFrame
+	rep.TotalFrames = numFrames
+	rep.DurationSec = float64(numFrames) / SampleRate
+
+	if rep.DurationSec < 0.005 {
+		rep.Passed = false
+		rep.Issues = append(rep.Issues, fmt.Sprintf("duration %.3fs is under 5ms minimum", rep.DurationSec))
+	} else if rep.DurationSec > 15.0 {
+		rep.Passed = false
+		rep.Issues = append(rep.Issues, fmt.Sprintf("duration %.2fs exceeds 15.0s maximum SFX limit", rep.DurationSec))
+	}
+
+	if numFrames > 0 {
+		rep.StartSampleLeft = int16(uint16(pcm[0]) | (uint16(pcm[1]) << 8))
+		rep.StartSampleRight = int16(uint16(pcm[2]) | (uint16(pcm[3]) << 8))
+		lastIdx := (numFrames - 1) * BytesPerFrame
+		rep.EndSampleLeft = int16(uint16(pcm[lastIdx]) | (uint16(pcm[lastIdx+1]) << 8))
+		rep.EndSampleRight = int16(uint16(pcm[lastIdx+2]) | (uint16(pcm[lastIdx+3]) << 8))
+	}
+
+	var sumL, sumR float64
+	var sumSqL, sumSqR float64
+	var maxAbsL, maxAbsR float64
+
+	for i := 0; i < alignedLen; i += 4 {
+		sL := float64(int16(uint16(pcm[i]) | (uint16(pcm[i+1]) << 8))) / 32768.0
+		sR := float64(int16(uint16(pcm[i+2]) | (uint16(pcm[i+3]) << 8))) / 32768.0
+
+		sumL += sL
+		sumR += sR
+		sumSqL += sL * sL
+		sumSqR += sR * sR
+
+		absL := math.Abs(sL)
+		if absL > maxAbsL {
+			maxAbsL = absL
+		}
+		absR := math.Abs(sR)
+		if absR > maxAbsR {
+			maxAbsR = absR
+		}
+	}
+
+	rep.PeakLeft = maxAbsL
+	rep.PeakRight = maxAbsR
+	peakMax := math.Max(maxAbsL, maxAbsR)
+	if peakMax > 0 {
+		rep.PeakDBFS = 20.0 * math.Log10(peakMax)
+	} else {
+		rep.PeakDBFS = -120.0
+	}
+
+	if numFrames > 0 {
+		rep.DCOffsetLeft = sumL / float64(numFrames)
+		rep.DCOffsetRight = sumR / float64(numFrames)
+		rep.RMSLeft = math.Sqrt(sumSqL / float64(numFrames))
+		rep.RMSRight = math.Sqrt(sumSqR / float64(numFrames))
+		rmsMax := math.Max(rep.RMSLeft, rep.RMSRight)
+		if rmsMax > 0 {
+			rep.RMSDBFS = 20.0 * math.Log10(rmsMax)
+		} else {
+			rep.RMSDBFS = -120.0
+		}
+	}
+
+	if peakMax < 0.015 {
+		rep.Passed = false
+		rep.Issues = append(rep.Issues, fmt.Sprintf("signal is effectively silent (peak: %.4f, %.1f dBFS)", peakMax, rep.PeakDBFS))
+	}
+	if peakMax > 0.9995 {
+		rep.Passed = false
+		rep.Issues = append(rep.Issues, fmt.Sprintf("signal exhibits digital clipping (peak: %.4f, >= 0 dBFS)", peakMax))
+	}
+	if math.Abs(rep.DCOffsetLeft) > 0.02 || math.Abs(rep.DCOffsetRight) > 0.02 {
+		rep.Passed = false
+		rep.Issues = append(rep.Issues, fmt.Sprintf("excessive DC offset (L: %+.4f, R: %+.4f, threshold: ±0.02)", rep.DCOffsetLeft, rep.DCOffsetRight))
+	}
+	if math.Abs(float64(rep.StartSampleLeft)) > 300 || math.Abs(float64(rep.StartSampleRight)) > 300 {
+		rep.Passed = false
+		rep.Issues = append(rep.Issues, fmt.Sprintf("boundary start frame not zeroed (L: %d, R: %d, anti-click violated)", rep.StartSampleLeft, rep.StartSampleRight))
+	}
+	if math.Abs(float64(rep.EndSampleLeft)) > 300 || math.Abs(float64(rep.EndSampleRight)) > 300 {
+		rep.Passed = false
+		rep.Issues = append(rep.Issues, fmt.Sprintf("boundary end frame not zeroed (L: %d, R: %d, anti-click violated)", rep.EndSampleLeft, rep.EndSampleRight))
+	}
+
+	if !rep.Passed {
+		return rep, fmt.Errorf("production SFX validation failed: %s", strings.Join(rep.Issues, "; "))
+	}
+	return rep, nil
+}
+
+// ValidateScore audits a parsed Score for structural integrity and numerical sanity.
+func ValidateScore(score *Score) error {
+	if score == nil {
+		return fmt.Errorf("validate score: score is nil")
+	}
+	if len(score.Tracks) == 0 {
+		return fmt.Errorf("validate score: score %q has no tracks", score.Title)
+	}
+	for trIdx, tr := range score.Tracks {
+		if len(tr.Events) == 0 {
+			return fmt.Errorf("validate score: track %d %q has 0 note events", trIdx, tr.Name)
+		}
+		var trackSec float64
+		for evIdx, ev := range tr.Events {
+			if math.IsNaN(ev.DurationSec) || math.IsInf(ev.DurationSec, 0) || ev.DurationSec < 0 {
+				return fmt.Errorf("validate score: track %d event %d has invalid duration %.4f", trIdx, evIdx, ev.DurationSec)
+			}
+			trackSec += ev.DurationSec
+			for pIdx, p := range ev.Pitches {
+				if math.IsNaN(p.StartFreq) || math.IsNaN(p.EndFreq) || p.StartFreq <= 0 || p.EndFreq <= 0 {
+					return fmt.Errorf("validate score: track %d event %d pitch %d has invalid frequencies (%.1f -> %.1f)", trIdx, evIdx, pIdx, p.StartFreq, p.EndFreq)
+				}
+			}
+		}
+		if trackSec <= 0 {
+			return fmt.Errorf("validate score: track %d %q has total duration 0s", trIdx, tr.Name)
+		}
+	}
+	return nil
 }
