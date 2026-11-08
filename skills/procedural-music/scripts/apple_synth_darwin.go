@@ -247,13 +247,21 @@ type scheduledMIDIEvent struct {
 // isolated AudioUnit with natural NoteOff release tails, preserving 100% of Apple's real
 // instrument timbre while following the score's dynamic arrangement and stereo panning.
 func SynthesizeScoreApple(score *Score) ([]byte, error) {
+	mixed, _, err := SynthesizeScoreAppleWithStems(score)
+	return mixed, err
+}
+
+// SynthesizeScoreAppleWithStems renders a parsed Score offline using macOS's native AudioToolbox
+// MIDISynth / DLSSynth AudioUnit backed by Apple's built-in Roland GS / General MIDI real
+// instrument bank (gs_instruments.dls), returning both the mixed stereo PCM and per-track stems.
+func SynthesizeScoreAppleWithStems(score *Score) ([]byte, [][]byte, error) {
 	if score == nil || len(score.Tracks) == 0 {
-		return nil, fmt.Errorf("synthesize apple score: score is nil or has no tracks")
+		return nil, nil, fmt.Errorf("synthesize apple score: score is nil or has no tracks")
 	}
 
 	bankPath := defaultAppleDLSSoundBank
 	if _, err := os.Stat(bankPath); err != nil {
-		return nil, fmt.Errorf("synthesize apple score: macOS system soundbank %q not found: %w", bankPath, err)
+		return nil, nil, fmt.Errorf("synthesize apple score: macOS system soundbank %q not found: %w", bankPath, err)
 	}
 
 	var maxSamples int
@@ -270,7 +278,7 @@ func SynthesizeScoreApple(score *Score) ([]byte, error) {
 		}
 	}
 	if maxSamples <= 0 {
-		return nil, fmt.Errorf("synthesize apple score: score has 0 total samples")
+		return nil, nil, fmt.Errorf("synthesize apple score: score has 0 total samples")
 	}
 
 	trackPCMs := make([][]byte, len(score.Tracks))
@@ -293,30 +301,27 @@ func SynthesizeScoreApple(score *Score) ([]byte, error) {
 
 	for _, err := range trackErrs {
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 
 	mixed := MixTracksPCM(trackPCMs)
+	var err error
+	mixed, err = applyScorePostFX(mixed, score)
+	if err != nil {
+		return nil, nil, err
+	}
 
-	if score.GlobalLPF > 0 {
-		mixed = ApplyLowPassFilter(mixed, score.GlobalLPF)
-	}
-	if score.GlobalHPF > 0 {
-		mixed = ApplyHighPassFilter(mixed, score.GlobalHPF)
-	}
-	if score.GlobalBitcrushBits > 0 {
-		mixed = ApplyBitcrush(mixed, score.GlobalBitcrushBits, score.GlobalBitcrushDownsample)
-	}
-	if score.HasLoopSlice {
-		sliced, err := SliceLoopPCM(mixed, score.LoopStartSec, score.LoopEndSec)
-		if err != nil {
-			return nil, err
+	for i := range trackPCMs {
+		if len(trackPCMs[i]) > 0 {
+			stemOut, stemErr := applyScorePostFX(trackPCMs[i], score)
+			if stemErr == nil {
+				trackPCMs[i] = stemOut
+			}
 		}
-		mixed = sliced
 	}
 
-	return mixed[:len(mixed)&^3], nil
+	return mixed, trackPCMs, nil
 }
 
 func renderAppleSingleTrack(tr Track, bankPath string, totalSamples int) ([]byte, error) {

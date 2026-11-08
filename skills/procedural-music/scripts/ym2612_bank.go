@@ -723,7 +723,7 @@ func stepYM2612Voice(st *ym2612VoiceState, patch YM2612Patch, freq, t, keyOffSec
 		op3 := evalYM2612Operator(uint16((int32(phase10[2])+(mod3>>2))&0x3FF), envAtten10[2])
 		out14 = evalYM2612Operator(uint16((int32(phase10[3])+(op3>>2))&0x3FF), envAtten10[3])
 	case 2:
-		// Alg 2: (Op1 + (Op2 -> Op3)) -> Op4 (carrier) — Classic Shinobi III FM Electric Guitar & FM Bass
+		// Alg 2: (Op1 + (Op2 -> Op3)) -> Op4 (carrier): Classic Shinobi III FM Electric Guitar & FM Bass
 		op2 := evalYM2612Operator(phase10[1], envAtten10[1])
 		op3 := evalYM2612Operator(uint16((int32(phase10[2])+(op2>>2))&0x3FF), envAtten10[2])
 		mod4 := clampYM2612Accum14(op1Out + op3)
@@ -735,13 +735,13 @@ func stepYM2612Voice(st *ym2612VoiceState, patch YM2612Patch, freq, t, keyOffSec
 		mod4 := clampYM2612Accum14(op2 + op3)
 		out14 = evalYM2612Operator(uint16((int32(phase10[3])+(mod4>>2))&0x3FF), envAtten10[3])
 	case 4:
-		// Alg 4: (Op1 -> Op2) + (Op3 -> Op4) — Dual 2-operator stacks (Rhythm Guitar, Brass, EPiano, Flute, Bell)
+		// Alg 4: (Op1 -> Op2) + (Op3 -> Op4): Dual 2-operator stacks (Rhythm Guitar, Brass, EPiano, Flute, Bell)
 		c1 := evalYM2612Operator(uint16((int32(phase10[1])+(op1Out>>2))&0x3FF), envAtten10[1])
 		op3 := evalYM2612Operator(phase10[2], envAtten10[2])
 		c2 := evalYM2612Operator(uint16((int32(phase10[3])+(op3>>2))&0x3FF), envAtten10[3])
 		out14 = clampYM2612Accum14(c1 + c2)
 	case 5:
-		// Alg 5: Op1 -> (Op2 + Op3 + Op4) — 1 modulator driving 3 parallel carriers (Strings, Choir)
+		// Alg 5: Op1 -> (Op2 + Op3 + Op4): 1 modulator driving 3 parallel carriers (Strings, Choir)
 		mod := op1Out >> 2
 		c1 := evalYM2612Operator(uint16((int32(phase10[1])+mod)&0x3FF), envAtten10[1])
 		c2 := evalYM2612Operator(uint16((int32(phase10[2])+mod)&0x3FF), envAtten10[2])

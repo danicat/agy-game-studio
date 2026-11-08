@@ -2409,52 +2409,97 @@ func AlignPCMOffset(offset int64) int64 {
 // SynthesizeScore renders all tracks of a parsed Score into a 4-byte aligned 16-bit 44.1kHz stereo PCM buffer.
 // When score.SynthEngine is "apple", it dispatches to macOS CoreAudio / AudioToolbox sampled synthesis.
 func SynthesizeScore(score *Score) ([]byte, error) {
+	mixed, _, err := SynthesizeScoreWithStems(score)
+	return mixed, err
+}
+
+// SynthesizeScoreWithStems renders all tracks of a parsed Score into both a mixed 16-bit 44.1kHz stereo PCM buffer
+// and a per-track slice of 4-byte aligned stereo PCM stem buffers (aligned 1:1 with score.Tracks).
+func SynthesizeScoreWithStems(score *Score) ([]byte, [][]byte, error) {
 	if score == nil || len(score.Tracks) == 0 {
-		return nil, fmt.Errorf("synthesize score: score is nil or has no tracks")
+		return nil, nil, fmt.Errorf("synthesize score: score is nil or has no tracks")
 	}
 	if strings.EqualFold(score.SynthEngine, "apple") {
-		return SynthesizeScoreApple(score)
+		return SynthesizeScoreAppleWithStems(score)
 	}
-	return SynthesizeScoreProcedural(score)
+	return SynthesizeScoreProceduralWithStems(score)
+}
+
+func applyScorePostFX(pcm []byte, score *Score) ([]byte, error) {
+	if len(pcm) == 0 || score == nil {
+		return pcm, nil
+	}
+	out := pcm
+	if score.GlobalLPF > 0 {
+		out = ApplyLowPassFilter(out, score.GlobalLPF)
+	}
+	if score.GlobalHPF > 0 {
+		out = ApplyHighPassFilter(out, score.GlobalHPF)
+	}
+	if score.GlobalBitcrushBits > 0 {
+		out = ApplyBitcrush(out, score.GlobalBitcrushBits, score.GlobalBitcrushDownsample)
+	}
+	if score.HasLoopSlice {
+		sliced, err := SliceLoopPCM(out, score.LoopStartSec, score.LoopEndSec)
+		if err != nil {
+			return nil, err
+		}
+		out = sliced
+	}
+	return out[:len(out)&^3], nil
 }
 
 // SynthesizeScoreProcedural renders all tracks using the pure-Go YM2612 4-op FM, SN76489 PSG, and procedural DSP engine.
 func SynthesizeScoreProcedural(score *Score) ([]byte, error) {
+	mixed, _, err := SynthesizeScoreProceduralWithStems(score)
+	return mixed, err
+}
+
+// SynthesizeScoreProceduralWithStems renders all tracks in parallel across CPU cores using the pure-Go
+// YM2612 4-op FM, SN76489 PSG, and procedural DSP engine, returning both the master mix and per-track stems.
+func SynthesizeScoreProceduralWithStems(score *Score) ([]byte, [][]byte, error) {
 	if score == nil || len(score.Tracks) == 0 {
-		return nil, fmt.Errorf("synthesize score: score is nil or has no tracks")
+		return nil, nil, fmt.Errorf("synthesize score: score is nil or has no tracks")
 	}
 
-	var trackPCMs [][]byte
-	for _, tr := range score.Tracks {
-		pcm := synthesizeTrackEvents(tr.Events)
+	trackPCMs := make([][]byte, len(score.Tracks))
+	var wg sync.WaitGroup
+	for trIdx, tr := range score.Tracks {
+		wg.Add(1)
+		go func(idx int, events []NoteEvent) {
+			defer wg.Done()
+			trackPCMs[idx] = synthesizeTrackEvents(events)
+		}(trIdx, tr.Events)
+	}
+	wg.Wait()
+
+	var nonEmpty [][]byte
+	for _, pcm := range trackPCMs {
 		if len(pcm) > 0 {
-			trackPCMs = append(trackPCMs, pcm)
+			nonEmpty = append(nonEmpty, pcm)
 		}
 	}
-	if len(trackPCMs) == 0 {
-		return nil, fmt.Errorf("synthesize score: rendered tracks produced 0 PCM bytes")
+	if len(nonEmpty) == 0 {
+		return nil, nil, fmt.Errorf("synthesize score: rendered tracks produced 0 PCM bytes")
 	}
 
-	mixed := MixTracksPCM(trackPCMs)
+	mixed := MixTracksPCM(nonEmpty)
+	var err error
+	mixed, err = applyScorePostFX(mixed, score)
+	if err != nil {
+		return nil, nil, err
+	}
 
-	if score.GlobalLPF > 0 {
-		mixed = ApplyLowPassFilter(mixed, score.GlobalLPF)
-	}
-	if score.GlobalHPF > 0 {
-		mixed = ApplyHighPassFilter(mixed, score.GlobalHPF)
-	}
-	if score.GlobalBitcrushBits > 0 {
-		mixed = ApplyBitcrush(mixed, score.GlobalBitcrushBits, score.GlobalBitcrushDownsample)
-	}
-	if score.HasLoopSlice {
-		sliced, err := SliceLoopPCM(mixed, score.LoopStartSec, score.LoopEndSec)
-		if err != nil {
-			return nil, err
+	for i := range trackPCMs {
+		if len(trackPCMs[i]) > 0 {
+			stemOut, stemErr := applyScorePostFX(trackPCMs[i], score)
+			if stemErr == nil {
+				trackPCMs[i] = stemOut
+			}
 		}
-		mixed = sliced
 	}
 
-	return mixed[:len(mixed)&^3], nil
+	return mixed, trackPCMs, nil
 }
 
 // synthesizeTrackEvents renders a sequence of NoteEvents using cumulative sample rounding

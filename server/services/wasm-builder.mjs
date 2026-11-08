@@ -19,10 +19,12 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
-const WASM_CACHE_DIR = path.join(os.tmpdir(), 'agy-playtest-wasm-cache');
+const uid = typeof process.getuid === 'function' ? process.getuid() : 'default';
+const WASM_CACHE_DIR = path.join(os.tmpdir(), `agy-playtest-wasm-cache-${uid}`);
 const BUILD_ID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const recentBuilds = new Map();
+const MAX_WASM_BUILDS = 10;
 let latestBuildId = null;
 
 function createBuilderError(message, statusCode, extra = {}) {
@@ -253,7 +255,7 @@ export async function compileGoWasm({ workspace, pkg, timeoutMs = 60_000 } = {})
     }
   }
 
-  fs.mkdirSync(WASM_CACHE_DIR, { recursive: true });
+  fs.mkdirSync(WASM_CACHE_DIR, { recursive: true, mode: 0o700 });
 
   const buildId = crypto.randomUUID();
   const outputWasmPath = path.join(WASM_CACHE_DIR, `${buildId}.wasm`);
@@ -358,6 +360,20 @@ export async function compileGoWasm({ workspace, pkg, timeoutMs = 60_000 } = {})
 
   recentBuilds.set(buildId, buildRecord);
   latestBuildId = buildId;
+
+  while (recentBuilds.size > MAX_WASM_BUILDS) {
+    const oldestKey = recentBuilds.keys().next().value;
+    if (!oldestKey) break;
+    const old = recentBuilds.get(oldestKey);
+    recentBuilds.delete(oldestKey);
+    if (old && old.wasmPath && fs.existsSync(old.wasmPath)) {
+      try {
+        fs.unlinkSync(old.wasmPath);
+      } catch {
+        // Ignore unlink failure
+      }
+    }
+  }
 
   return {
     status: 'ok',

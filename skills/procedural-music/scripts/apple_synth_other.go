@@ -26,3 +26,7 @@ import (
 func SynthesizeScoreApple(score *Score) ([]byte, error) {
 	return nil, fmt.Errorf("apple high-fidelity synthesis requires macOS (CoreAudio / AudioToolbox), but current platform is %s/%s", runtime.GOOS, runtime.GOARCH)
 }
+
+func SynthesizeScoreAppleWithStems(score *Score) ([]byte, [][]byte, error) {
+	return nil, nil, fmt.Errorf("apple high-fidelity synthesis requires macOS (CoreAudio / AudioToolbox), but current platform is %s/%s", runtime.GOOS, runtime.GOARCH)
+}

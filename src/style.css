@@ -1270,3 +1270,916 @@ body.studio-mode-full #app-root {
   margin-left: auto;
   font-size: 12px;
 }
+
+/* ==========================================================================
+   CSS-Driven Icon Engine & Modern Web Guidance Tokens
+   ========================================================================== */
+
+@property --icon-start {
+  syntax: "*";
+  inherits: false;
+}
+
+@property --icon-end {
+  syntax: "*";
+  inherits: false;
+}
+
+:root {
+  --icon-style-size: 1.15em;
+  --icon-style-spacing: 0.35em;
+  --icon-repeat: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m17 2 4 4-4 4'/%3E%3Cpath d='M3 11v-1a4 4 0 0 1 4-4h14'/%3E%3Cpath d='m7 22-4-4 4-4'/%3E%3Cpath d='M21 13v1a4 4 0 0 1-4 4H3'/%3E%3C/svg%3E");
+  --icon-undo: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 7v6h6'/%3E%3Cpath d='M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13'/%3E%3C/svg%3E");
+  --icon-redo: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 7v6h-6'/%3E%3Cpath d='M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7'/%3E%3C/svg%3E");
+  --icon-reset: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8'/%3E%3Cpath d='M3 3v5h5'/%3E%3C/svg%3E");
+  --icon-plus: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 5v14M5 12h14'/%3E%3C/svg%3E");
+  --icon-tune: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='4' x2='4' y1='21' y2='14'/%3E%3Cline x1='4' x2='4' y1='10' y2='3'/%3E%3Cline x1='12' x2='12' y1='21' y2='12'/%3E%3Cline x1='12' x2='12' y1='8' y2='3'/%3E%3Cline x1='20' x2='20' y1='21' y2='16'/%3E%3Cline x1='20' x2='20' y1='12' y2='3'/%3E%3Cline x1='2' x2='6' y1='14' y2='14'/%3E%3Cline x1='10' x2='14' y1='8' y2='8'/%3E%3Cline x1='18' x2='22' y1='16' y2='16'/%3E%3C/svg%3E");
+  --icon-save: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z'/%3E%3Cpolyline points='17 21 17 13 7 13 7 21'/%3E%3Cpolyline points='7 3 7 8 15 8'/%3E%3C/svg%3E");
+  --icon-download: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4'/%3E%3Cpolyline points='7 10 12 15 17 10'/%3E%3Cline x1='12' x2='12' y1='15' y2='3'/%3E%3C/svg%3E");
+}
+
+.icon:empty {
+  --icon-start: var(--icon);
+}
+
+/* Fallback class hooks for browsers without Container Style Queries */
+:where(.icon-start, .icon:empty)::before {
+  content: image-set(linear-gradient(transparent 0 100%), var(--icon-start)) / var(--icon-style-alt, "");
+  display: inline-block;
+  width: var(--icon-style-size, 1em);
+  height: var(--icon-style-size, 1em);
+  background-color: var(--icon-style-color, currentColor);
+  mask: var(--icon-start) no-repeat center / contain;
+  vertical-align: calc(0.5cap - var(--icon-style-size, 1em) / 2 + var(--icon-style-voffset, -0.02em));
+  flex: none;
+  pointer-events: none;
+  forced-color-adjust: none;
+}
+
+:where(.icon-start)::before {
+  --icon-start: inherit;
+}
+
+:where(.icon:empty)::before {
+  --icon-start: var(--icon);
+}
+
+:where(.icon-start:not(.icon, :empty))::before {
+  margin-inline-end: var(--icon-style-spacing, 0.3em);
+}
+
+@container style(--icon-start) {
+  ::before {
+    --icon-start: inherit;
+    content: "" / var(--icon-style-alt, "");
+    display: inline-block;
+    width: var(--icon-style-size, 1em);
+    height: var(--icon-style-size, 1em);
+    background-color: var(--icon-style-color, currentColor);
+    mask: var(--icon-start) no-repeat center / contain;
+    vertical-align: calc(0.5cap - var(--icon-style-size, 1em) / 2 + var(--icon-style-voffset, -0.02em));
+    flex: none;
+    pointer-events: none;
+    forced-color-adjust: none;
+  }
+
+  :where(:not(.icon, :empty))::before {
+    margin-inline-end: var(--icon-style-spacing, 0.3em);
+  }
+}
+
+@keyframes webkit-301609 {}
+
+@supports ((-webkit-nbsp-mode: normal) or (-webkit-touch-callout: none) or (font: -apple-system-body)) and (content-visibility: auto) {
+  @layer webkit-301609-fix {
+    ::before, ::after {
+      animation: webkit-301609 0s;
+    }
+  }
+
+  @property --icon-start {
+    syntax: "*";
+    inherits: true;
+  }
+
+  @layer webkit-325900-fix {
+    @container style(--icon-start) {
+      * {
+        --icon-start: initial;
+      }
+    }
+  }
+}
+
+/* ==========================================================================
+   Top-Level Studio Workspace Navigation Bar (Playtest | Sound)
+   ========================================================================== */
+
+.studio-view-hidden {
+  display: none !important;
+}
+
+.studio-top-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 32px;
+  padding: 0 10px;
+  background-color: #06090F;
+  border-bottom: 1px solid var(--studio-border);
+  flex-shrink: 0;
+  z-index: 40;
+}
+
+.studio-top-tabs {
+  display: inline-flex;
+  align-items: stretch;
+  height: 100%;
+  gap: 4px;
+}
+
+.studio-top-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--studio-text-muted);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: color 0.14s ease, border-color 0.14s ease, background-color 0.14s ease;
+}
+
+.studio-top-tab:hover {
+  color: var(--studio-text);
+}
+
+.studio-top-tab.active,
+.studio-top-tab[aria-selected="true"] {
+  color: #FFFFFF;
+  border-bottom-color: var(--studio-accent);
+  background-color: rgba(99, 102, 241, 0.1);
+}
+
+/* ==========================================================================
+   Sound Studio (Human-Friendly Synth & Song Mixer)
+   ========================================================================== */
+
+.sound-studio-root {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background-color: var(--studio-bg);
+  color: var(--studio-text);
+}
+
+.sound-studio-shell {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Single-Row Minimalist Toolbar */
+.sound-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 44px;
+  padding: 0 12px;
+  background-color: var(--studio-surface);
+  border-bottom: 1px solid var(--studio-border);
+  flex-shrink: 0;
+  flex-wrap: nowrap;
+}
+
+.sound-toolbar-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.sound-mode-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 7px;
+  border: 1px solid var(--studio-border-strong);
+  background-color: var(--studio-bg);
+  flex-shrink: 0;
+}
+
+.sound-mode-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-block-size: 24px;
+  min-inline-size: 44px;
+  padding: 2px 10px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--studio-text-secondary);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.14s ease, color 0.14s ease;
+}
+
+.sound-mode-tab:hover:not(.active) {
+  color: var(--studio-text);
+  background-color: var(--studio-surface-hover);
+}
+
+.sound-mode-tab.active {
+  background-color: var(--studio-accent);
+  color: #FFFFFF;
+}
+
+.sound-mode-tab:focus-visible {
+  outline: 2px solid var(--studio-accent);
+  outline-offset: 1px;
+}
+
+.sound-file-select {
+  flex: 1 1 180px;
+  max-width: 280px;
+  min-width: 110px;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid var(--studio-border-strong);
+  background-color: var(--studio-bg);
+  color: var(--studio-text);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  outline: none;
+  cursor: pointer;
+}
+
+.sound-file-select:focus {
+  border-color: var(--studio-accent);
+  box-shadow: 0 0 0 2px var(--studio-accent-soft);
+}
+
+.sound-play-btn {
+  height: 30px;
+  min-width: 68px;
+  padding: 0 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.sound-toolbar-edges {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.sound-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background-color: transparent;
+  color: var(--studio-text-secondary);
+  cursor: pointer;
+  transition: background-color 0.14s ease, color 0.14s ease, border-color 0.14s ease;
+}
+
+.sound-icon-btn:hover:not(:disabled),
+.sound-icon-btn:is(:interest-source, .interest-source) {
+  background-color: var(--studio-surface-hover);
+  border-color: var(--studio-border-strong);
+  color: var(--studio-text);
+}
+
+.sound-icon-btn.active,
+.sound-icon-btn[aria-pressed="true"] {
+  background-color: var(--studio-accent-soft);
+  border-color: rgba(99, 102, 241, 0.45);
+  color: #A5B4FC;
+}
+
+.sound-icon-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.sound-toolbar-divider {
+  width: 1px;
+  height: 18px;
+  background-color: var(--studio-border);
+  margin: 0 2px;
+  flex-shrink: 0;
+}
+
+/* Popover Panels & Interest-Triggered Hint Tooltips */
+[interestfor] {
+  --interest-delay-start: 0.2s;
+  interest-delay-start: var(--interest-delay-start);
+  --interest-delay-end: 0.1s;
+  interest-delay-end: var(--interest-delay-end);
+}
+
+[popover]:is(:popover-open, .\:popover-open) {
+  display: block;
+}
+
+.sound-hint-tooltip {
+  position-area: block-end;
+  position-try-fallbacks: flip-block, flip-inline;
+  inset: auto;
+  margin: 6px 0;
+  padding: 4px 8px;
+  border-radius: 5px;
+  background-color: #0F172A;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  color: #F8FAFC;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.25;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+  pointer-events: auto;
+}
+
+.sound-popover-panel {
+  position-area: block-end span-inline-start;
+  position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
+  inset: auto;
+  margin: 6px 0 0 0;
+  min-width: 210px;
+  padding: 6px;
+  border-radius: 10px;
+  background-color: var(--studio-surface);
+  border: 1px solid var(--studio-border-strong);
+  color: var(--studio-text);
+  box-shadow: var(--studio-shadow-lg);
+}
+
+.sound-popover-action {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--studio-text);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sound-popover-action:hover {
+  background-color: var(--studio-surface-hover);
+}
+
+.sound-settings-popover {
+  width: min(360px, 92vw);
+  padding: 12px;
+}
+
+.sound-popover-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--studio-border);
+}
+
+.sound-popover-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--studio-text-secondary);
+}
+
+.sound-segmented-group {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border-radius: 7px;
+  background-color: var(--studio-bg);
+  border: 1px solid var(--studio-border-strong);
+  gap: 2px;
+}
+
+.sound-seg-btn {
+  height: 24px;
+  padding: 0 9px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--studio-text-muted);
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.sound-seg-btn:hover {
+  color: var(--studio-text);
+}
+
+.sound-seg-btn.active {
+  background-color: var(--studio-accent);
+  color: #FFFFFF;
+}
+
+.sound-popover-details {
+  border-top: 1px solid var(--studio-border);
+  padding-top: 8px;
+  margin-top: 8px;
+}
+
+.sound-popover-details:first-of-type {
+  border-top: none;
+  padding-top: 0;
+  margin-top: 0;
+}
+
+.sound-popover-details > summary {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--studio-text-secondary);
+  cursor: pointer;
+  padding: 4px 0;
+  user-select: none;
+}
+
+.sound-diagnostics-body {
+  padding-top: 8px;
+  font-size: 11.5px;
+  color: var(--studio-text-secondary);
+}
+
+.sound-diag-summary {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  padding: 8px;
+  border-radius: 6px;
+  background-color: var(--studio-bg);
+  border: 1px solid var(--studio-border);
+  margin-bottom: 8px;
+}
+
+.sound-issues-list {
+  margin: 0;
+  padding-left: 16px;
+  color: #FCA5A5;
+}
+
+.sound-pass-note {
+  margin: 0;
+  color: #6EE7B7;
+}
+
+.sound-dsl-drawer-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.sound-dsl-textarea {
+  width: 100%;
+  min-height: 150px;
+  max-height: 240px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--studio-border-strong);
+  background-color: #070B12;
+  color: #E2E8F0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11.5px;
+  line-height: 1.45;
+  resize: vertical;
+  outline: none;
+}
+
+.sound-dsl-textarea:focus {
+  border-color: var(--studio-accent);
+}
+
+.sound-apply-dsl-btn {
+  align-self: flex-end;
+  height: 28px;
+  font-size: 12px;
+}
+
+/* Forefront Hero Stage (80%+ of screen) */
+.sound-hero-stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* 1. Interactive Waveform & Transport Card */
+.sound-wave-card {
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+  background-color: #070B12;
+  border: 1px solid var(--studio-border);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.sound-wave-canvas-wrap {
+  position: relative;
+  width: 100%;
+  height: 124px;
+}
+
+#sound-visualizer-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: pointer;
+}
+
+.sound-wave-overlay {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.sound-time-pill {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background-color: rgba(15, 23, 42, 0.78);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  color: #E2E8F0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sound-status-pill {
+  pointer-events: auto;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.sound-status-pill.pass {
+  background-color: rgba(16, 185, 129, 0.16);
+  border-color: rgba(16, 185, 129, 0.45);
+  color: #34D399;
+}
+
+.sound-status-pill.fail {
+  background-color: rgba(245, 158, 11, 0.18);
+  border-color: rgba(245, 158, 11, 0.55);
+  color: #FBBF24;
+}
+
+.sound-scrub-slider {
+  width: 100%;
+  height: 6px;
+  margin: 0;
+  appearance: none;
+  background: #131B2E;
+  outline: none;
+  cursor: pointer;
+}
+
+.sound-scrub-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #F59E0B;
+  border: 2px solid #FFFFFF;
+  cursor: pointer;
+}
+
+/* 2. Human Controls Card (SFX Shaper & Song Mixer) */
+.sound-controls-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px;
+  border-radius: 10px;
+  background-color: var(--studio-surface);
+  border: 1px solid var(--studio-border);
+}
+
+/* 2A. SFX Preset Strip & Sliders */
+.sound-preset-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sound-preset-chip {
+  height: 28px;
+  padding: 0 11px;
+  border-radius: 999px;
+  border: 1px solid var(--studio-border-strong);
+  background-color: var(--studio-bg);
+  color: var(--studio-text-secondary);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  white-space: nowrap;
+}
+
+.sound-preset-chip:hover {
+  border-color: var(--studio-accent);
+  color: var(--studio-text);
+}
+
+.sound-preset-chip.active {
+  background-color: var(--studio-accent);
+  border-color: var(--studio-accent);
+  color: #FFFFFF;
+  font-weight: 600;
+}
+
+.sound-tone-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.sound-control-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--studio-text-secondary);
+}
+
+.sound-tone-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.sound-tone-btn {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid var(--studio-border);
+  background-color: var(--studio-bg);
+  color: var(--studio-text-muted);
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.sound-tone-btn:hover {
+  color: var(--studio-text);
+  border-color: var(--studio-border-strong);
+}
+
+.sound-tone-btn.active {
+  background-color: var(--studio-accent-soft);
+  border-color: rgba(99, 102, 241, 0.5);
+  color: #A5B4FC;
+}
+
+.sound-sliders-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+}
+
+.sound-slider-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background-color: var(--studio-bg);
+  border: 1px solid var(--studio-border);
+}
+
+.sound-slider-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--studio-text-secondary);
+}
+
+.sound-slider-header strong {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  color: var(--studio-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.sound-slider-field input[type="range"],
+.sound-mini-slider input[type="range"] {
+  width: 100%;
+  accent-color: var(--studio-accent);
+  cursor: pointer;
+}
+
+/* 2B. Song Mixer Controls */
+.sound-music-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.sound-tempo-field {
+  flex: 1 1 180px;
+}
+
+.sound-bank-switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sound-track-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sound-mixer-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 1.1fr) minmax(130px, 1.3fr) minmax(90px, 1fr) minmax(90px, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background-color: var(--studio-bg);
+  border: 1px solid var(--studio-border);
+}
+
+@media (max-width: 560px) {
+  .sound-mixer-row {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.sound-mixer-left {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.sound-ms-btn {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  border: 1px solid var(--studio-border-strong);
+  background-color: var(--studio-surface);
+  color: var(--studio-text-muted);
+  font-size: 10.5px;
+  font-weight: 700;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.sound-ms-btn.mute.active {
+  background-color: #EF4444;
+  border-color: #DC2626;
+  color: #FFFFFF;
+}
+
+.sound-ms-btn.solo.active {
+  background-color: #F59E0B;
+  border-color: #D97706;
+  color: #090D16;
+}
+
+.sound-track-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--studio-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sound-inst-select {
+  height: 26px;
+  padding: 0 6px;
+  border-radius: 5px;
+  border: 1px solid var(--studio-border-strong);
+  background-color: var(--studio-surface);
+  color: var(--studio-text);
+  font-family: inherit;
+  font-size: 11.5px;
+  outline: none;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.sound-mini-slider {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--studio-text-muted);
+}
+
+.sound-mini-slider span {
+  width: 24px;
+  flex-shrink: 0;
+}
+
+.sound-empty-note {
+  font-size: 12px;
+  color: var(--studio-text-muted);
+  padding: 6px;
+}
+
+/* Bottom Prompt Bar */
+.sound-prompt-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 12px;
+  background-color: var(--studio-surface);
+  border-top: 1px solid var(--studio-border);
+  flex-shrink: 0;
+}
+
+.sound-prompt-input {
+  flex: 1;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid var(--studio-border-strong);
+  background-color: var(--studio-bg);
+  color: var(--studio-text);
+  font-family: inherit;
+  font-size: 12.5px;
+  outline: none;
+}
+
+.sound-prompt-input:focus {
+  border-color: var(--studio-accent);
+  box-shadow: 0 0 0 2px var(--studio-accent-soft);
+}
+
+.sound-send-btn {
+  height: 30px;
+  padding: 0 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+

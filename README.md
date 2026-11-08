@@ -8,7 +8,7 @@
 
 ## User-Level Installation
 
-`agy-game-studio` ships with prebuilt UI assets (`dist/`) and uses Antigravity's bundled Node.js runtime and `sidecar_sdk`. Installing the plugin as a user requires **no `npm install` or frontend build step** — only a Go toolchain (`1.26+` recommended) to compile your games to WebAssembly (`GOOS=js GOARCH=wasm`).
+`agy-game-studio` ships with prebuilt UI assets (`dist/`) and uses Antigravity's bundled Node.js runtime and `sidecar_sdk`. Installing the plugin as a user requires **no `npm install` or frontend build step**: only a Go toolchain (`1.26+` recommended) to compile your games to WebAssembly (`GOOS=js GOARCH=wasm`).
 
 ### 1. Install the plugin
 
@@ -59,9 +59,10 @@ Place the plugin directory in one of Antigravity's plugin discovery roots:
 
 ### 3. Open Playtest Studio & start building
 
-Use this slash command inside any Antigravity conversation:
+Use these slash commands inside any Antigravity conversation:
 
-- **`/playtest-studio`** — Open the **Playtest Studio** side pane (or click **⋮ → Extensions → Playtest Studio** in the top-right corner of a conversation).
+- **/playtest-studio**: Open the **Playtest Studio** side pane (or click **⋮ → Extensions → Playtest Studio** in the top-right corner of a conversation).
+- **/sound-studio**: Open the **Sound Studio** procedural audio workbench (or click **⋮ → Extensions → Sound Studio**).
 
 ### 4. Configure Gemini credentials for AI art & music (optional)
 
@@ -104,6 +105,7 @@ Open **Playtest Studio** in the right-hand side pane via `/playtest-studio`, `[P
 | Skill | What it does |
 | :--- | :--- |
 | [`playtest-studio`](skills/playtest-studio/SKILL.md) | Launches the live 60 FPS Ebitengine WASM Playtest Studio in the side pane (`/playtest-studio`) with a 10s DVR rewind buffer, 10s GIF export, and visual bug annotations. |
+| [`sound-studio`](skills/sound-studio/SKILL.md) | Launches the live procedural audio workbench in the side pane (`/sound-studio`) to audition, edit, mix, and export 16-bit YM2612 FM / Apple CoreAudio `.music` and `.sfx` sound cues. |
 | [`procedural-music`](skills/procedural-music/SKILL.md) | Composes, validates, and synthesizes 16-bit retro multi-track BGM in Go using a high-density music DSL with YM2612 FM synthesis and Apple CoreAudio GM instruments. |
 | [`procedural-sfx`](skills/procedural-sfx/SKILL.md) | Generates and synthesizes procedural game sound effects (lasers, explosions, jumps, powerups, hits) via FM, PSG, and filtered noise DSP pipelines. |
 
@@ -162,6 +164,12 @@ gemini-api music --help
 
 DISCLAIMER: I AM NOT A GAME DEVELOPER.
 
-<img src="chibi_dani_oops.png" alt="Chibi Dani Oops" width="320" />
+<img src="assets/chibi_dani_oops.png" alt="Chibi Dani Oops" width="320" />
 
 I am [Daniela Petruzalek](https://linkedin.com/in/petruzalek), a Developer Relations Engineer at Google. I might not be a game developer, but I am a lifetime gamer and game collector. I enjoy using projects like this to teach software engineering, agentic coding, and creative ways to build with AI.
+
+---
+
+## Disclaimer
+
+This is not an officially supported Google product.

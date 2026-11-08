@@ -1,5 +1,25 @@
-# macOS
+# macOS & OS metadata
 .DS_Store
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Environment variables & secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Editor & IDE directories / swap files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
 
 # Python caches & virtual environments
 __pycache__/
@@ -15,7 +35,27 @@ node_modules/
 *.wasm
 bin/
 coverage.out
+*.test
+*.prof
+
+# Node logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
 # Audio export artifacts
 *.wav
+*.pcm
+*.stems
+*.aif
+*.aiff
+*.mp3
+*.ogg
+*.flac
+
+# Scratch and temporary files
+scratch/
+*.tmp
 

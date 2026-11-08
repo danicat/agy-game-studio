@@ -25,6 +25,16 @@ import {
   compileGoWasm,
   resolveCompiledWasm,
 } from './services/wasm-builder.mjs';
+import {
+  listSoundFiles,
+  getSoundPresets,
+  readSoundFile,
+  saveSoundFile,
+  synthesizeSound,
+  getSynthesizedWav,
+  getSynthesizedStems,
+  exportSoundWav,
+} from './services/sound_service.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -34,7 +44,8 @@ const STARTED_AT = Date.now();
 
 const SESSION_ID_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/;
 const SEND_TO_CHAT_FILENAME_REGEX = /^[a-zA-Z0-9_\-]+\.(png|jpg|jpeg|webp|gif)$/i;
-const MAX_JSON_BODY_BYTES = 50 * 1024 * 1024; // 50MB
+const MAX_JSON_BODY_BYTES = 2 * 1024 * 1024; // 2MB default
+const MAX_CHAT_BODY_BYTES = 25 * 1024 * 1024; // 25MB for annotated screenshots
 const AGENTAPI_TIMEOUT_MS = 15_000; // 15 seconds
 
 let activeServerPort = null;
@@ -1124,22 +1135,16 @@ export function configureSidecarApp(app, ResponseClass) {
   };
 
   // Static Frontend Routes (re-read on every request per /ui-extension)
-  app.page(
-    '/',
-    () =>
-      new ResponseClass(readDistText('index.html'), {
-        contentType: 'text/html; charset=utf-8',
-        headers: { 'Cache-Control': 'no-store' },
-      })
-  );
-  app.page(
-    '/index.html',
-    () =>
-      new ResponseClass(readDistText('index.html'), {
-        contentType: 'text/html; charset=utf-8',
-        headers: { 'Cache-Control': 'no-store' },
-      })
-  );
+  const serveIndexPage = () =>
+    new ResponseClass(readDistText('index.html'), {
+      contentType: 'text/html; charset=utf-8',
+      headers: { 'Cache-Control': 'no-store' },
+    });
+
+  app.page('/', serveIndexPage);
+  app.page('/index.html', serveIndexPage);
+  app.page('/playtest', serveIndexPage);
+  app.page('/sound', serveIndexPage);
   app.page(
     '/app.js',
     () =>
@@ -1274,18 +1279,105 @@ export function configureSidecarApp(app, ResponseClass) {
     'POST'
   );
 
+  // Sound Studio APIs (.music & .sfx live synthesis, presets, and validation)
+  app.api(
+    '/api/sound/files',
+    wrapApi((data) => listSoundFiles({ workspace: data.workspace })),
+    'GET'
+  );
+  app.api(
+    '/api/sound/presets',
+    wrapApi(() => getSoundPresets()),
+    'GET'
+  );
+  app.api(
+    '/api/sound/file/read',
+    wrapApi((data) => readSoundFile({ filePath: data.filePath })),
+    'POST'
+  );
+  app.api(
+    '/api/sound/file/save',
+    wrapApi((data) => saveSoundFile({ filePath: data.filePath, content: data.content })),
+    'POST'
+  );
+  app.api(
+    '/api/sound/synthesize',
+    wrapApi((data) =>
+      synthesizeSound({
+        dsl: data.dsl,
+        type: data.type,
+        apple: Boolean(data.apple),
+        soloTracks: Array.isArray(data.soloTracks) ? data.soloTracks : [],
+        muteTracks: Array.isArray(data.muteTracks) ? data.muteTracks : [],
+      })
+    ),
+    'POST'
+  );
+  app.api(
+    '/api/sound/wav',
+    wrapApi((data) => {
+      const wavBuf = getSynthesizedWav(data.buildId);
+      return new ResponseClass(wavBuf, {
+        contentType: 'audio/wav',
+        headers: {
+          'Cache-Control': 'no-store',
+        },
+      });
+    }),
+    'GET'
+  );
+  app.api(
+    '/api/sound/stems',
+    wrapApi((data) => {
+      const stemsBuf = getSynthesizedStems(data.buildId);
+      return new ResponseClass(stemsBuf, {
+        contentType: 'application/octet-stream',
+        headers: {
+          'Cache-Control': 'no-store',
+        },
+      });
+    }),
+    'GET'
+  );
+  app.api(
+    '/api/sound/export',
+    wrapApi((data) =>
+      exportSoundWav({
+        dsl: data.dsl,
+        type: data.type,
+        apple: Boolean(data.apple),
+        soloTracks: Array.isArray(data.soloTracks) ? data.soloTracks : [],
+        muteTracks: Array.isArray(data.muteTracks) ? data.muteTracks : [],
+        outputPath: data.outputPath,
+        filePath: data.filePath,
+      })
+    ),
+    'POST'
+  );
+
   return app;
 }
 
 // Apply CORS and security headers on standalone HTTP responses (used in Vite dev & unit tests)
 function applySecurityAndCorsHeaders(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  const origin = req.headers?.origin;
+  const isAllowedOrigin =
+    !origin ||
+    /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(origin) ||
+    origin.startsWith('vscode-webview://') ||
+    origin.startsWith('sidecar://');
+
+  if (isAllowedOrigin) {
+    res.setHeader('Access-Control-Allow-Origin', origin || '*');
+    res.setHeader('Access-Control-Allow-Private-Network', 'true');
+    if (origin) res.setHeader('Vary', 'Origin');
+  }
+
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', '*');
-  res.setHeader('Access-Control-Allow-Private-Network', 'true');
   res.setHeader(
     'Content-Security-Policy',
-    "default-src * 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' data: blob:; frame-ancestors *;"
+    "default-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' data: blob:; frame-ancestors 'self' vscode-webview: sidecar:;"
   );
   res.setHeader('X-Content-Type-Options', 'nosniff');
 }
@@ -1475,15 +1567,113 @@ export async function handleRequest(req, res) {
     }
 
     if (pathname === '/api/send-to-chat' && req.method === 'POST') {
-      const body = await parseJsonBody(req);
+      const body = await parseJsonBody(req, MAX_CHAT_BODY_BYTES);
       const result = await processSendToChat(body, null);
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify(result));
       return;
     }
 
+    if (pathname === '/api/sound/files' && req.method === 'GET') {
+      const workspace = searchParams.get('workspace') || undefined;
+      const result = await listSoundFiles({ workspace });
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify(result));
+      return;
+    }
+
+    if (pathname === '/api/sound/presets' && req.method === 'GET') {
+      const result = await getSoundPresets();
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify(result));
+      return;
+    }
+
+    if (pathname === '/api/sound/file/read' && req.method === 'POST') {
+      const body = await parseJsonBody(req);
+      const result = await readSoundFile({ filePath: body.filePath });
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify(result));
+      return;
+    }
+
+    if (pathname === '/api/sound/file/save' && req.method === 'POST') {
+      const body = await parseJsonBody(req);
+      const result = await saveSoundFile({ filePath: body.filePath, content: body.content });
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify(result));
+      return;
+    }
+
+    if (pathname === '/api/sound/synthesize' && req.method === 'POST') {
+      const body = await parseJsonBody(req);
+      const result = await synthesizeSound({
+        dsl: body.dsl,
+        type: body.type,
+        apple: Boolean(body.apple),
+        soloTracks: Array.isArray(body.soloTracks) ? body.soloTracks : [],
+        muteTracks: Array.isArray(body.muteTracks) ? body.muteTracks : [],
+      });
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify(result));
+      return;
+    }
+
+    if (pathname === '/api/sound/wav' && (req.method === 'GET' || req.method === 'HEAD')) {
+      const buildId = searchParams.get('buildId') || undefined;
+      const wavBuf = getSynthesizedWav(buildId);
+      res.writeHead(200, {
+        'Content-Type': 'audio/wav',
+        'Content-Length': wavBuf.length,
+        'Cache-Control': 'no-store',
+      });
+      if (req.method === 'HEAD') {
+        res.end();
+        return;
+      }
+      res.end(wavBuf);
+      return;
+    }
+
+    if (pathname === '/api/sound/stems' && (req.method === 'GET' || req.method === 'HEAD')) {
+      const buildId = searchParams.get('buildId') || undefined;
+      const stemsBuf = getSynthesizedStems(buildId);
+      res.writeHead(200, {
+        'Content-Type': 'application/octet-stream',
+        'Content-Length': stemsBuf.length,
+        'Cache-Control': 'no-store',
+      });
+      if (req.method === 'HEAD') {
+        res.end();
+        return;
+      }
+      res.end(stemsBuf);
+      return;
+    }
+
+    if (pathname === '/api/sound/export' && req.method === 'POST') {
+      const body = await parseJsonBody(req);
+      const result = await exportSoundWav({
+        dsl: body.dsl,
+        type: body.type,
+        apple: Boolean(body.apple),
+        soloTracks: Array.isArray(body.soloTracks) ? body.soloTracks : [],
+        muteTracks: Array.isArray(body.muteTracks) ? body.muteTracks : [],
+        outputPath: body.outputPath,
+        filePath: body.filePath,
+      });
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify(result));
+      return;
+    }
+
     if (req.method === 'GET' || req.method === 'HEAD') {
-      if (pathname === '/' || pathname === '/index.html') {
+      if (
+        pathname === '/' ||
+        pathname === '/index.html' ||
+        pathname === '/playtest' ||
+        pathname === '/sound'
+      ) {
         const indexPath = path.join(distPath, 'index.html');
         if (!fs.existsSync(indexPath) || !fs.statSync(indexPath).isFile()) {
           throw createHttpError(

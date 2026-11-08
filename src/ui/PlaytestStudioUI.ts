@@ -726,7 +726,7 @@ export class PlaytestStudioUI {
         class="btn btn-ghost btn-icon btn-toggle active"
         data-tooltip-pos="top"
         data-tooltip="Attach WASM Console Logs (ON)"
-        title="Attach Captured WASM Console / Stderr Logs (ON — Click to toggle)"
+        title="Attach Captured WASM Console / Stderr Logs (ON: Click to toggle)"
         aria-label="Toggle attaching WASM console logs"
         aria-pressed="true"
       >
@@ -1246,7 +1246,7 @@ export class PlaytestStudioUI {
 
     if (this.runner.isPaused()) {
       this.focusPillEl.className = 'focus-status-pill paused';
-      this.focusPillEl.innerHTML = '<span>⏸ Paused — Draw on Frame or Scrub 10s DVR</span>';
+      this.focusPillEl.innerHTML = '<span>⏸ Paused: Draw on Frame or Scrub 10s DVR</span>';
       return;
     }
 

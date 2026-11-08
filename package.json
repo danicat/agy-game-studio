@@ -1,9 +1,17 @@
 {
   "name": "agy-game-studio",
-  "version": "0.1.0",
-  "description": "Build 2D games in Go with Ebitengine, Nano Banana 2.1, and Lyria 3.5.",
+  "version": "0.2.0",
+  "description": "2D game development studio and live WebAssembly Playtest & Procedural Sound Studio UI extension for Antigravity, Ebitengine, and Go.",
   "type": "module",
   "main": "sidecars/studio/main.mjs",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/danicat/agy-game-studio.git"
+  },
+  "homepage": "https://github.com/danicat/agy-game-studio#readme",
+  "bugs": {
+    "url": "https://github.com/danicat/agy-game-studio/issues"
+  },
   "scripts": {
     "dev": "vite",
     "typecheck": "tsc --noEmit",
@@ -19,10 +27,19 @@
     "ui-extension",
     "ebitengine",
     "playtest-studio",
+    "sound-studio",
+    "procedural-audio",
+    "procedural-music",
+    "procedural-sfx",
+    "chiptune",
+    "synth",
+    "ym2612",
+    "coreaudio",
+    "audio",
     "gamedev",
     "gemini"
   ],
-  "author": "Daniela Petruzalek",
+  "author": "Daniela Petruzalek <daniela@danicat.dev> (https://danicat.dev)",
   "license": "Apache-2.0",
   "devDependencies": {
     "typescript": "^5.8.0",

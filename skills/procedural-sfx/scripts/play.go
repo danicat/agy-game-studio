@@ -16,6 +16,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -225,6 +226,12 @@ func main() {
 		fmt.Printf("Successfully exported '%s' (%.2fs duration) to '%s'\n",
 			score.Title, float64(len(pcm))/float64(BytesPerSecond), wavFile)
 
+	case "synth-json":
+		runSFXSynthJSON(os.Args[2:])
+
+	case "presets-json":
+		runSFXPresetsJSON()
+
 	default:
 		printUsage()
 		os.Exit(1)
@@ -235,11 +242,275 @@ func printUsage() {
 	fmt.Println("Procedural SFX DSL Player, Validator & WAV Exporter CLI")
 	fmt.Println()
 	fmt.Println("Commands:")
-	fmt.Println("  go run ./scripts play [-loop] <cue.sfx>     Play a .sfx DSL file (one-off default)")
-	fmt.Println("  go run ./scripts demo [-loop]               Play built-in arcade SFX showcase")
-	fmt.Println("  go run ./scripts validate [cue.sfx...]      Audit and validate SFX against production standards")
-	fmt.Println("  go run ./scripts presets                    List all 18 built-in archetype presets")
-	fmt.Println("  go run ./scripts export <cue.sfx> <out.wav> Compile .sfx DSL file and export to WAV")
+	fmt.Println("  go run ./scripts play [-loop] <cue.sfx>                        Play a .sfx DSL file (one-off default)")
+	fmt.Println("  go run ./scripts demo [-loop]                                  Play built-in arcade SFX showcase")
+	fmt.Println("  go run ./scripts validate [cue.sfx...]                         Audit and validate SFX against production standards")
+	fmt.Println("  go run ./scripts presets                                       List all 18 built-in archetype presets")
+	fmt.Println("  go run ./scripts export <cue.sfx> <out.wav>                    Compile .sfx DSL file and export to WAV")
+	fmt.Println("  go run ./scripts synth-json [-apple] [-out <out.wav>] <cue.sfx> Synthesize and emit JSON report")
+	fmt.Println("  go run ./scripts presets-json                                  Emit JSON array of all 18 SFX presets")
+}
+
+// TrackMetadataJSON describes a single polyphonic track in an SFX Score for the Sound Studio UI.
+type TrackMetadataJSON struct {
+	Name        string  `json:"name"`
+	DefaultInst string  `json:"defaultInst"`
+	WaveType    string  `json:"waveType"`
+	Volume      float64 `json:"volume"`
+	Pan         float64 `json:"pan"`
+	EventCount  int     `json:"eventCount"`
+}
+
+// SFXSynthReportJSON is the single-line JSON output emitted by `synth-json`.
+type SFXSynthReportJSON struct {
+	Passed           bool                `json:"passed"`
+	Error            string              `json:"error,omitempty"`
+	Title            string              `json:"title"`
+	Type             string              `json:"type"`
+	BPM              float64             `json:"bpm"`
+	DurationSec      float64             `json:"durationSec"`
+	PeakLeftDBFS     float64             `json:"peakLeftDBFS"`
+	PeakRightDBFS    float64             `json:"peakRightDBFS"`
+	PeakDBFS         float64             `json:"peakDBFS"`
+	RMSLeftDBFS      float64             `json:"rmsLeftDBFS"`
+	RMSRightDBFS     float64             `json:"rmsRightDBFS"`
+	RMSDBFS          float64             `json:"rmsDBFS"`
+	DCOffset         float64             `json:"dcOffset"`
+	DCOffsetL        float64             `json:"dcOffsetL"`
+	DCOffsetR        float64             `json:"dcOffsetR"`
+	LowFreqEnergyPct float64             `json:"lowFreqEnergyPct"`
+	BoundaryClean    bool                `json:"boundaryClean"`
+	Issues           []string            `json:"issues"`
+	Tracks           []TrackMetadataJSON `json:"tracks"`
+	WavPath          string              `json:"wavPath,omitempty"`
+}
+
+// SFXPresetJSON describes one built-in SFX archetype preset in `presets-json`.
+type SFXPresetJSON struct {
+	Name       string  `json:"name"`
+	Wave       string  `json:"wave"`
+	StartFreq  float64 `json:"startFreq"`
+	EndFreq    float64 `json:"endFreq"`
+	PitchCurve string  `json:"pitchCurve"`
+	DutyStart  float64 `json:"dutyStart"`
+	DutyEnd    float64 `json:"dutyEnd"`
+	LPFStart   float64 `json:"lpfStart"`
+	LPFEnd     float64 `json:"lpfEnd"`
+	HPFStart   float64 `json:"hpfStart"`
+	HPFEnd     float64 `json:"hpfEnd"`
+	Q          float64 `json:"q"`
+	Attack     float64 `json:"attack"`
+	Decay      float64 `json:"decay"`
+	Sustain    float64 `json:"sustain"`
+	Release    float64 `json:"release"`
+	Volume     float64 `json:"volume"`
+}
+
+func safeDBFS(amp float64) float64 {
+	if amp <= 1e-6 || math.IsNaN(amp) || math.IsInf(amp, 0) {
+		return -120.0
+	}
+	return math.Round(20.0*math.Log10(amp)*100.0) / 100.0
+}
+
+func safeRound(val float64, decimals int) float64 {
+	if math.IsNaN(val) || math.IsInf(val, 0) {
+		return 0.0
+	}
+	pow := math.Pow(10, float64(decimals))
+	return math.Round(val*pow) / pow
+}
+
+func emitSFXJSONError(err error) {
+	msg := "unknown error"
+	if err != nil {
+		msg = err.Error()
+	}
+	rep := SFXSynthReportJSON{
+		Passed: false,
+		Error:  msg,
+		Issues: []string{msg},
+		Tracks: []TrackMetadataJSON{},
+	}
+	b, _ := json.Marshal(rep)
+	fmt.Println(string(b))
+}
+
+func extractSFXTrackMetadata(score *Score) []TrackMetadataJSON {
+	if score == nil || len(score.Tracks) == 0 {
+		return []TrackMetadataJSON{}
+	}
+	tracks := make([]TrackMetadataJSON, 0, len(score.Tracks))
+	for _, tr := range score.Tracks {
+		meta := TrackMetadataJSON{
+			Name:        tr.Name,
+			DefaultInst: tr.DefaultInst,
+			WaveType:    "sine",
+			Volume:      0.2,
+			Pan:         0.0,
+			EventCount:  len(tr.Events),
+		}
+		if tr.DefaultInst != "" {
+			if inst, ok := score.Instruments[tr.DefaultInst]; ok {
+				meta.WaveType = inst.WaveType
+				meta.Volume = safeRound(inst.Volume, 4)
+				meta.Pan = safeRound(inst.Pan, 4)
+			}
+		} else {
+			for _, ev := range tr.Events {
+				if !ev.IsRest && ev.Inst.WaveType != "" {
+					if meta.DefaultInst == "" {
+						meta.DefaultInst = ev.Inst.Name
+					}
+					meta.WaveType = ev.Inst.WaveType
+					meta.Volume = safeRound(ev.Inst.Volume, 4)
+					meta.Pan = safeRound(ev.Inst.Pan, 4)
+					break
+				}
+			}
+		}
+		tracks = append(tracks, meta)
+	}
+	return tracks
+}
+
+func runSFXSynthJSON(args []string) {
+	synthCmd := flag.NewFlagSet("synth-json", flag.ContinueOnError)
+	synthCmd.SetOutput(io.Discard)
+	_ = synthCmd.Bool("apple", false, "Accepted for flag symmetry with music-cli")
+	outFlag := synthCmd.String("out", "", "Optional output WAV path")
+	if err := synthCmd.Parse(args); err != nil {
+		emitSFXJSONError(fmt.Errorf("parse synth-json flags: %w", err))
+		return
+	}
+	if synthCmd.NArg() < 1 {
+		emitSFXJSONError(fmt.Errorf("missing DSL SFX file path"))
+		return
+	}
+
+	dslFile := synthCmd.Arg(0)
+	score, err := LoadDSLFile(dslFile)
+	if err != nil {
+		emitSFXJSONError(err)
+		return
+	}
+
+	issues := []string{}
+	if err := ValidateScore(score); err != nil {
+		issues = append(issues, err.Error())
+	}
+
+	pcm, err := SynthesizeScore(score)
+	if err != nil {
+		emitSFXJSONError(err)
+		return
+	}
+	pcm = pcm[:len(pcm)&^3]
+
+	if *outFlag != "" {
+		if err := ExportWAV(*outFlag, pcm); err != nil {
+			emitSFXJSONError(fmt.Errorf("export WAV: %w", err))
+			return
+		}
+	}
+
+	valRep, _ := ValidateProductionSFX(pcm)
+	if len(valRep.Issues) > 0 {
+		issues = append(issues, valRep.Issues...)
+	}
+
+	alignedLen := len(pcm) &^ 3
+	var lpState, sumSqLow, sumSqMono float64
+	const lpAlpha = 0.035
+	for i := 0; i < alignedLen; i += 4 {
+		sL := float64(int16(uint16(pcm[i])|(uint16(pcm[i+1])<<8))) / 32768.0
+		sR := float64(int16(uint16(pcm[i+2])|(uint16(pcm[i+3])<<8))) / 32768.0
+		mono := (sL + sR) * 0.5
+		lpState += lpAlpha * (mono - lpState)
+		sumSqLow += lpState * lpState
+		sumSqMono += mono * mono
+	}
+	lowFreqEnergyPct := 0.0
+	if sumSqMono > 1e-12 {
+		lowFreqEnergyPct = (sumSqLow / sumSqMono) * 100.0
+	}
+
+	boundaryClean := math.Abs(float64(valRep.StartSampleLeft)) <= 300 &&
+		math.Abs(float64(valRep.StartSampleRight)) <= 300 &&
+		math.Abs(float64(valRep.EndSampleLeft)) <= 300 &&
+		math.Abs(float64(valRep.EndSampleRight)) <= 300
+
+	rep := SFXSynthReportJSON{
+		Passed:           len(issues) == 0 && valRep.Passed,
+		Title:            score.Title,
+		Type:             score.Type,
+		BPM:              safeRound(score.BPM, 2),
+		DurationSec:      safeRound(valRep.DurationSec, 4),
+		PeakLeftDBFS:     safeDBFS(valRep.PeakLeft),
+		PeakRightDBFS:    safeDBFS(valRep.PeakRight),
+		PeakDBFS:         safeRound(valRep.PeakDBFS, 2),
+		RMSLeftDBFS:      safeDBFS(valRep.RMSLeft),
+		RMSRightDBFS:     safeDBFS(valRep.RMSRight),
+		RMSDBFS:          safeRound(valRep.RMSDBFS, 2),
+		DCOffset:         safeRound((valRep.DCOffsetLeft+valRep.DCOffsetRight)/2.0, 5),
+		DCOffsetL:        safeRound(valRep.DCOffsetLeft, 5),
+		DCOffsetR:        safeRound(valRep.DCOffsetRight, 5),
+		LowFreqEnergyPct: safeRound(lowFreqEnergyPct, 2),
+		BoundaryClean:    boundaryClean,
+		Issues:           issues,
+		Tracks:           extractSFXTrackMetadata(score),
+		WavPath:          *outFlag,
+	}
+	b, _ := json.Marshal(rep)
+	fmt.Println(string(b))
+}
+
+func runSFXPresetsJSON() {
+	names := ListSFXPresets()
+	out := make([]SFXPresetJSON, 0, len(names))
+	for _, name := range names {
+		p, ok := GetSFXPreset(name)
+		if !ok {
+			continue
+		}
+		curve := p.PitchCurve
+		if curve == "" {
+			curve = "exp"
+		}
+		q := p.ResonanceQ
+		if q <= 0 {
+			q = 0.707
+		}
+		dutyStart := p.DutyStart
+		dutyEnd := p.DutyEnd
+		if dutyStart <= 0 && p.DutyCycle > 0 {
+			dutyStart = p.DutyCycle
+		}
+		if dutyEnd <= 0 && dutyStart > 0 {
+			dutyEnd = dutyStart
+		}
+		out = append(out, SFXPresetJSON{
+			Name:       name,
+			Wave:       p.WaveType,
+			StartFreq:  safeRound(p.DefaultStartFreq, 2),
+			EndFreq:    safeRound(p.DefaultEndFreq, 2),
+			PitchCurve: curve,
+			DutyStart:  safeRound(dutyStart, 3),
+			DutyEnd:    safeRound(dutyEnd, 3),
+			LPFStart:   safeRound(p.LPFStart, 2),
+			LPFEnd:     safeRound(p.LPFEnd, 2),
+			HPFStart:   safeRound(p.HPFStart, 2),
+			HPFEnd:     safeRound(p.HPFEnd, 2),
+			Q:          safeRound(q, 3),
+			Attack:     safeRound(p.Attack, 4),
+			Decay:      safeRound(p.Decay, 4),
+			Sustain:    safeRound(p.Sustain, 4),
+			Release:    safeRound(p.Release, 4),
+			Volume:     safeRound(p.Volume, 4),
+		})
+	}
+	b, _ := json.Marshal(out)
+	fmt.Println(string(b))
 }
 
 func printValidationRow(name string, rep *SFXValidationReport, err error) {

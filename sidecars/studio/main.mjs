@@ -16,8 +16,37 @@
 // Antigravity starts this file with Node.js (see sidecar.json) and sets
 // ANTIGRAVITY_SIDECAR_WEB_PORT; SidecarApp listens on it automatically.
 
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Response, SidecarApp } from 'sidecar_sdk';
 import { configureSidecarApp } from '../../server/index.mjs';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const serverDir = path.resolve(__dirname, '..', '..', 'server');
+const distDir = path.resolve(__dirname, '..', '..', 'dist');
+let restartTimer = null;
+function scheduleSupervisorRestart(reason) {
+  if (restartTimer) clearTimeout(restartTimer);
+  restartTimer = setTimeout(() => {
+    console.log(`[sidecar] ${reason}, exiting for supervisor restart...`);
+    process.exit(0);
+  }, 250);
+}
+try {
+  fs.watch(serverDir, { recursive: true }, (_eventType, filename) => {
+    if (filename && filename.endsWith('.mjs')) {
+      scheduleSupervisorRestart(`Backend file changed (${filename})`);
+    }
+  });
+  fs.watch(distDir, { recursive: true }, (_eventType, filename) => {
+    if (filename && (filename.endsWith('.js') || filename.endsWith('.css'))) {
+      scheduleSupervisorRestart(`Frontend bundle updated (${filename})`);
+    }
+  });
+} catch {
+  // Ignore if recursive watch is unsupported
+}
 
 const app = new SidecarApp();
 configureSidecarApp(app, Response);
