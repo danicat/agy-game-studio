@@ -1,7 +1,7 @@
 {
   "name": "agy-game-studio",
   "displayName": "Game Dev Studio",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "End-to-end 2D game development studio for Go and Ebitengine with live 60 FPS WASM Playtest tab, 10-second DVR GIF bug annotation, Sound Editor procedural audio (.music & .sfx) synthesis, and Sprite Editor 2D sprite & tileset design (.sprite & .aseprite) in Game Dev Studio.",
   "logo": "assets/logo.svg",
   "suggestedPrompts": [

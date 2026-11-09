@@ -8,7 +8,7 @@
 
 ## User-Level Installation
 
-`agy-game-studio` ships with prebuilt UI assets (`dist/`) and uses Antigravity's bundled Node.js runtime and `sidecar_sdk`. Installing the plugin as a user requires **no `npm install` or frontend build step**: only a Go toolchain (`1.26+` recommended) to compile your games to WebAssembly (`GOOS=js GOARCH=wasm`), plus `uv` and `python3` when running `uv run skills/nano-banana/scripts/banana.py`, `uv run skills/lyria/scripts/lyria.py`, or `uv run skills/gemini-omni/scripts/omni.py` for AI image, music, voice, and cutscene generation.
+`agy-game-studio` ships with prebuilt UI assets (`dist/`) and uses Antigravity's bundled Node.js runtime and `sidecar_sdk`. Installing the plugin as a user requires **no `npm install` or frontend build step**: only a Go toolchain (`1.26+` recommended) to compile your games to WebAssembly (`GOOS=js GOARCH=wasm`), plus `uv` and `python3` when running `uv run skills/nano-banana/scripts/banana.py`, `uv run skills/lyria/scripts/lyria.py`, or `uv run skills/gemini-omni/scripts/omni.py` for AI image, music, and video cutscene generation.
 
 ### 1. Install the plugin
 
@@ -65,18 +65,15 @@ Use `/game-dev-studio` inside any Antigravity conversation to open the **Game De
 - **Sound tab in Game Dev Studio (`🎹 Sound` / Sound Editor)**: Open `sidecar://agy-game-studio/studio/sound` to open, edit, mix, save, and export `.music` (`Song` mode) and `.sfx` (`SFX` mode) files using mode-scoped **Open File**, **Open Artifact**, **Save**, and **Export** (`.wav`) modals alongside **GUI** / **Text** and **Wave** / **Spectrum** toggles and a 1:1 instrument-to-channel mixer.
 - **Sprite tab in Game Dev Studio (`🎨 Sprites` / Sprite Editor)**: Open `sidecar://agy-game-studio/studio/sprite` to inspect, edit, save, and export `.sprite` and binary `.aseprite` containers using **Open File**, **Open Artifact**, **Save**, and **Export** alongside a `Visual` vs. `Text` toggle, `1× Once` lead-in frame flagging (`tag run 8 once, 9..11 loop`), `Play`/`Pause` (starts paused), `Speed`, `Backdrop`, and per-frame prompt comments.
 
-### 4. Configure Gemini credentials for AI art & music (optional)
+### 4. Configure Vertex AI / Gemini Enterprise credentials for AI art, music & video (optional)
 
-The `nano-banana` (`uv run skills/nano-banana/scripts/banana.py`), `lyria` (`uv run skills/lyria/scripts/lyria.py`), and `gemini-omni` (`uv run skills/gemini-omni/scripts/omni.py`) skills run via `uv` and `python3` (alongside the `gemini-api` CLI) with full support for both Google Cloud Vertex AI / Gemini Enterprise Application Default Credentials (ADC) and a Gemini API key:
+The `nano-banana` (`uv run skills/nano-banana/scripts/banana.py`), `lyria` (`uv run skills/lyria/scripts/lyria.py`), and `gemini-omni` (`uv run skills/gemini-omni/scripts/omni.py`) skills run via `uv` and `python3` using Google Cloud Vertex AI / Gemini Enterprise Application Default Credentials (ADC):
 
 ```bash
-# Option A: Vertex AI / Gemini Enterprise ADC
-gcloud auth application-default login
-export GOOGLE_CLOUD_PROJECT="your-gcp-project-id"
-export GOOGLE_CLOUD_LOCATION="us-central1"
-
-# Option B: Gemini API Key (Google AI Studio)
-export GEMINI_API_KEY="your-api-key"
+gcloud auth application-default login --billing-project YOUR_PROJECT_ID
+export GOOGLE_CLOUD_PROJECT="YOUR_PROJECT_ID"
+export GOOGLE_CLOUD_LOCATION="global"
+export GOOGLE_GENAI_USE_VERTEXAI="true"
 ```
 
 Run `./scripts/check_env.sh` at any time to verify Go, `wasm_exec.js`, Node.js, `uv`, Python 3, and your Gemini credentials.
@@ -112,11 +109,11 @@ Open **Game Dev Studio** in the right-hand side pane via `/game-dev-studio`, `[G
 | [`ebitengineer`](skills/ebitengineer/SKILL.md) | Engineering architecture and best practices for building 2D games in Go with Ebitengine v2, including scene state machines, virtual resolution scaling, fixed-timestep physics, zero-allocation draw loops, 4-byte aligned PCM audio, Kage shaders, and WebAssembly builds. |
 | [`game-dev-studio`](skills/game-dev-studio/SKILL.md) | Opens the Game Dev Studio side-panel UI extension (`/game-dev-studio`) with the **Playtest tab** (`🎮 Playtest` for 60 FPS WASM + 10s DVR GIF bug annotation), **Sound tab / Sound Editor** (`🎹 Sound` for `.music` and `.sfx` editing), and **Sprite tab / Sprite Editor** (`🎨 Sprites` for `.sprite` and `.aseprite` inspection). |
 | [`sprite-design`](skills/sprite-design/SKILL.md) | Complete guide and `.sprite` engine for 2D game sprites, tilesets, and frame animations in Ebitengine, featuring the 2-step AI Character Sheet to Sprite Grid normalization pipeline (`normalize` into `.sprite`, `.aseprite`, `.png`, and `.json`), procedural SDF/pixel-art `.sprite` definitions, and zero-allocation `AnimationController`. |
-| [`nano-banana`](skills/nano-banana/SKILL.md) | Generates character turnaround sheets, `4x4` chroma-key sprite grids, tilesets, parallax backgrounds, and title screen art with Nano Banana (`gemini-nano-banana-2.1`, `gemini-3.1-flash-lite-image`, `gemini-3.1-flash-image`, `gemini-3-pro-image`) via `uv run skills/nano-banana/scripts/banana.py` (supporting Vertex AI / Gemini Enterprise ADC and `GEMINI_API_KEY`), the `gemini-api` CLI, and Google Gen AI SDKs. |
+| [`nano-banana`](skills/nano-banana/SKILL.md) | Generates character turnaround sheets, `4x4` chroma-key sprite grids, tilesets, parallax backgrounds, and title screen art with Nano Banana (`gemini-nano-banana-2.1`, `gemini-3.1-flash-lite-image`, `gemini-3.1-flash-image`, `gemini-3-pro-image`) via `uv run skills/nano-banana/scripts/banana.py` with Vertex AI / Gemini Enterprise ADC. |
 | [`procedural-sfx`](skills/procedural-sfx/SKILL.md) | Synthesizes 4-byte aligned 16-bit 44.1 kHz stereo PCM game sound effects in memory from `.sfx` DSL scripts with PolyBLEP anti-aliasing, 18 built-in archetype presets, SVF filter sweeps, 16-bit Galois LFSR chiptune noise, and production quality validation. |
 | [`procedural-music`](skills/procedural-music/SKILL.md) | Composes, validates, and synthesizes multi-channel 16-bit stereo BGM from `.music` DSL scores using pure-Go SEGA Mega Drive YM2612 FM + SN76489 PSG synthesis or native macOS Apple CoreAudio GM instruments (`-apple`). |
-| [`lyria`](skills/lyria/SKILL.md) | Generates 44.1 kHz stereo soundtracks, full vocal songs, and 30-second instrumental loops from text prompts or concept art using Google Lyria (`lyria-3.5` and `lyria-3-clip-preview`) via `uv run skills/lyria/scripts/lyria.py` (supporting Vertex AI / Gemini Enterprise ADC and `GEMINI_API_KEY`), the `gemini-api` CLI, and Google Gen AI SDKs. |
-| [`gemini-omni`](skills/gemini-omni/SKILL.md) | Generates single-speaker and multi-speaker character voice acting, narrator TTS audio, and animated video cutscenes with synchronized dialogue and sound effects using Gemini Omni Flash 1.2 & 1.1 (`gemini-omni-1.2-flash`, `gemini-omni-1.1-flash`) via `uv run skills/gemini-omni/scripts/omni.py` (supporting Vertex AI / Gemini Enterprise ADC and `GEMINI_API_KEY`), the `gemini-api` CLI, and Google Gen AI SDKs. |
+| [`lyria`](skills/lyria/SKILL.md) | Generates 44.1 kHz stereo soundtracks, full vocal songs, and 30-second instrumental loops from text prompts or concept art using Google Lyria (`lyria-3.5` and `lyria-3-clip-preview`) via `uv run skills/lyria/scripts/lyria.py` with Vertex AI / Gemini Enterprise ADC. |
+| [`gemini-omni`](skills/gemini-omni/SKILL.md) | Generates, edits, interpolates, extends, and upscales `3s` to `15s` animated video cutscenes (`360p` to `4k` at `24 FPS`) with native synchronized audio using Gemini Omni 1.2 Flash (`gemini-omni-1.2-flash`) and `gemini-omni-1.1-flash` via `uv run skills/gemini-omni/scripts/omni.py` and the Google Gen AI Interactions API with Vertex AI / Gemini Enterprise ADC. |
 | [`godoctor`](skills/godoctor/SKILL.md) | Optional Go quality control and architectural safety toolset orchestrating `gofmt`, `goimports`, `go vet`, `modernize`, `golangci-lint`, compiler rollback gates, TestQuery SQLite analytics, and Selene mutation testing. |
 | [`swarm-coding`](skills/swarm-coding/SKILL.md) | Optional divide-and-conquer multi-agent swarm orchestrator with Coordinator, Lead, and Specialist roles and strict Single Writer file boundaries for concurrent multi-package development. |
 | [`parallel`](skills/parallel/SKILL.md) | Optional general-purpose task parallelization and subagent scaling engine for flat disjoint task fan-out, reactive worker queues, and Best-of-N tournaments. |
@@ -170,16 +167,10 @@ cd skills/sprite-design/scripts && go run . validate black_cat_anime.sprite blac
 cd skills/procedural-sfx/scripts && go run . validate *.sfx
 cd skills/procedural-music/scripts && go run . validate *.music
 
-# Generate or edit images with Nano Banana, music tracks with Lyria, and voice/cutscenes with Gemini Omni via uv + python3
-# (supports both Vertex AI / Gemini Enterprise ADC and GEMINI_API_KEY)
+# Generate or edit images with Nano Banana, music tracks with Lyria, and video cutscenes with Gemini Omni 1.2 Flash via uv + python3
 uv run skills/nano-banana/scripts/banana.py --help
 uv run skills/lyria/scripts/lyria.py --help
 uv run skills/gemini-omni/scripts/omni.py --help
-
-# Or via the standalone gemini-api CLI
-gemini-api image -h
-gemini-api music -h
-gemini-api video -h
 ```
 
 ---

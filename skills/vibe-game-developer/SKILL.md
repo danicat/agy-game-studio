@@ -5,8 +5,8 @@ description: >
   Ebitengine in Antigravity 2D Game Studio. Coordinates the full game
   development lifecycle across co-creation and GDD design (game-design), engine
   architecture and WebAssembly builds (ebitengineer), 2D HD and pixel-art
-  sprites and tilesets (sprite-design and nano-banana), procedural and AI audio,
-  voice acting, and cutscenes (procedural-sfx, procedural-music, lyria, and
+  sprites and tilesets (sprite-design and nano-banana), procedural and AI audio
+  and video cutscenes (procedural-sfx, procedural-music, lyria, and
   gemini-omni), interactive side-panel
   playtesting and asset inspection (game-dev-studio), Go code verification
   (godoctor), and parallel multi-agent execution (swarm-coding and parallel).
@@ -40,11 +40,11 @@ Each skill owns a distinct domain and works either standalone or as part of an e
 | **Co-Creation, MDA Aesthetics & GDD** | **[`game-design`](../game-design/SKILL.md)** | **Game Designer**: Runs a one-question-at-a-time `/grill-me` Socratic interview across any 2D genre, defines core loops and MDA aesthetics, locks in visual and audio pipeline choices, and writes `GDD.md`. |
 | **Ebitengine 2D Architecture & WASM** | **[`ebitengineer`](../ebitengineer/SKILL.md)** | **Engine Architect**: Scaffolds the Ebitengine v2 loop, virtual resolution scaling, scene state machines and overlay stacks, fixed-timestep updates, zero-allocation `Draw()` loops, Kage shaders, and `GOOS=js GOARCH=wasm` builds. |
 | **Sprites, Tilesets & Frame Animation** | **[`sprite-design`](../sprite-design/SKILL.md)** | **2D Technical Artist & Animator**: Supports both the 2-step AI Character Sheet to Sprite Grid pipeline (`normalize` into `.sprite`, `.png`, `.json`, and `.aseprite` at any resolution from `32x32` pixel art to `256x256+` 2D HD, like `black_cat_anime.*`) and the pure-code `.sprite` SDF/pixel DSL with zero-allocation `AnimationController`. |
-| **Generative AI Art & Reference Sheets** | **[`nano-banana`](../nano-banana/SKILL.md)** | **AI Visual Artist**: Generates character turnaround sheets, raw animation grids on `#00FF00` or `#FF00FF` chroma-key backgrounds, parallax backgrounds, portraits, and card art via `gemini-nano-banana-2.1`, `gemini-3.1-flash-lite-image`, and `gemini-3-pro-image` using `uv run skills/nano-banana/scripts/banana.py` (with Vertex AI / Gemini Enterprise ADC and `GEMINI_API_KEY` support) or `gemini-api image`. |
+| **Generative AI Art & Reference Sheets** | **[`nano-banana`](../nano-banana/SKILL.md)** | **AI Visual Artist**: Generates character turnaround sheets, raw animation grids on `#00FF00` or `#FF00FF` chroma-key backgrounds, parallax backgrounds, portraits, and card art via `gemini-nano-banana-2.1`, `gemini-3.1-flash-lite-image`, and `gemini-3-pro-image` using `uv run skills/nano-banana/scripts/banana.py` with Vertex AI / Gemini Enterprise ADC. |
 | **Procedural Game Sound Effects (`.sfx`)** | **[`procedural-sfx`](../procedural-sfx/SKILL.md)** | **SFX Designer**: Synthesizes 4-byte aligned (`&^ 3`) 16-bit 44.1 kHz stereo PCM sound cues in memory from `.sfx` DSL scripts with PolyBLEP anti-aliasing, 18 built-in presets, SVF filter sweeps, 16-bit Galois LFSR noise, and peak/DC validation. |
 | **Procedural Chiptune & DLS Music (`.music`)** | **[`procedural-music`](../procedural-music/SKILL.md)** | **Procedural Music Composer**: Compiles polyphonic `.music` scores (8 to 12+ channels, verified `|` barlines, `~` cross-bar ties) into 4-byte aligned stereo PCM using either the pure-Go SEGA Mega Drive YM2612 + SN76489 engine or the macOS Apple CoreAudio real-instrument engine (`-apple` / `gs_instruments.dls`). |
-| **Generative Studio AI Music** | **[`lyria`](../lyria/SKILL.md)** | **AI Music Composer**: Generates 44.1 kHz stereo soundtracks and 30-second loops via Google Lyria (`lyria-3.5` / `lyria-3-pro-preview` and `lyria-3-clip` / `lyria-3-clip-preview`) using `uv run skills/lyria/scripts/lyria.py` (with Vertex AI / Gemini Enterprise ADC and `GEMINI_API_KEY` support) or `gemini-api music`, including custom lyrics, timestamped arrangements, and image-to-music generation. |
-| **AI Character Voice Acting, TTS & Cutscenes** | **[`gemini-omni`](../gemini-omni/SKILL.md)** | **AI Voice & Cutscene Director**: Generates single-speaker and multi-speaker character voice acting, narrator voiceovers, and animated video cutscenes with synchronized dialogue and sound effects via Gemini Omni Flash 1.2 & 1.1 (`gemini-omni-1.2-flash`, `gemini-omni-1.1-flash`) using `uv run skills/gemini-omni/scripts/omni.py` (with Vertex AI / Gemini Enterprise ADC and `GEMINI_API_KEY` support) or `gemini-api`. |
+| **Generative Studio AI Music** | **[`lyria`](../lyria/SKILL.md)** | **AI Music Composer**: Generates 44.1 kHz stereo soundtracks and 30-second loops via Google Lyria (`lyria-3.5` / `lyria-3-pro-preview` and `lyria-3-clip` / `lyria-3-clip-preview`) using `uv run skills/lyria/scripts/lyria.py` with Vertex AI / Gemini Enterprise ADC, including custom lyrics, timestamped arrangements, and image-to-music generation. |
+| **AI Video Cutscenes & Editing** | **[`gemini-omni`](../gemini-omni/SKILL.md)** | **AI Cutscene & Video Director**: Generates, edits, interpolates, extends, and upscales `3s` to `15s` animated video cutscenes (`360p` to `4k` at `24 FPS`) with native synchronized dialogue, music, and sound effects via Gemini Omni 1.2 Flash (`gemini-omni-1.2-flash`) and `gemini-omni-1.1-flash` using `uv run skills/gemini-omni/scripts/omni.py` with Vertex AI / Gemini Enterprise ADC. |
 | **Interactive Visual Workbench** | **[`game-dev-studio`](../game-dev-studio/SKILL.md)** | **Studio Workbench Launcher**: Opens the **Game Dev Studio** side-panel UI (`Playtest` tab, `Sound` tab / **Sound Editor**, and `Sprites` tab / **Sprite Editor**) via `sidecar://` pills to playtest WASM builds with a 10s DVR and frame annotations, audition and edit `.sfx` and `.music` files, and inspect `.sprite` and `.aseprite` containers. |
 | **Go Code Quality & Verification** | **[`godoctor`](../godoctor/SKILL.md)** | **Go Quality Gate**: Runs compiler and linter checks (`gofmt`, `goimports`, `go vet`, `golangci-lint`), safe edit gates (`smart_build`, `smart_edit`), TestQuery analytics, and Selene mutation testing. |
 | **Parallel Multi-Agent Execution** | **[`swarm-coding`](../swarm-coding/SKILL.md)** & **[`parallel`](../parallel/SKILL.md)** | **Multi-Agent Coordinators**: Split large builds or asset batches across parallel subagents working on disjoint packages, files, or worktrees. |
@@ -67,7 +67,7 @@ flowchart TD
     AudChoice -->|"Procedural SFX"| ProcSFX["procedural-sfx (.sfx DSL, 18 Presets)"]
     AudChoice -->|"Procedural / DLS BGM"| ProcMus["procedural-music (.music DSL: YM2612 or Apple DLS)"]
     AudChoice -->|"AI Studio BGM"| Lyria["lyria (lyria-3.5 / lyria-3-clip)"]
-    AudChoice -->|"AI Voice / Cutscenes"| Omni["gemini-omni (Omni Flash 1.2 & 1.1)"]
+    AudChoice -->|"AI Video Cutscenes"| Omni["gemini-omni (gemini-omni-1.2-flash)"]
 
     Engine --> Studio["game-dev-studio (Playtest Tab, Sound Editor, Sprite Editor)"]
     SpriteNorm --> Studio
@@ -94,9 +94,9 @@ Always align with the user on animation motions, camera projection (side-profile
 
 * **Path A: Two-Step AI Character Sheet to Sprite Grid (`nano-banana` + `sprite-design` `normalize`)**:
   - Best for expressive heroes, bosses, NPCs, creatures, and isometric units that need 4 or more motion tags (`idle`, `walk`, `run`, `jump`, `fall`, `crouch`, `sleep`, `attack`, `hit`, `death`).
-  - **Step 1**: Use `nano-banana` (`uv run skills/nano-banana/scripts/banana.py` or `gemini-api image` with `gemini-nano-banana-2.1`) to create a character reference sheet with `1:2` to `1:3` game proportions, genre-matched camera projection, clear limb separation, and a 4-step color swatch bar.
-  - **Step 2**: Pass the reference sheet via `-i` to `nano-banana` (`uv run skills/nano-banana/scripts/banana.py` or `gemini-api image`) to generate uniform `4x4` animation grids on a flat `#00FF00` or `#FF00FF` chroma-key background with 10% to 15% safety margins around every cell. Then run `skills/sprite-design/scripts` `normalize` to strip the chroma key, prune boundary bleed, center and ground frames at native `256x256+` 2D HD or downsampled `64x64` pixel art, export `.png`, `.json`, `.aseprite`, and looping per-motion `.gif` previews, and wire Ebitengine's `NewGridSpriteSheet` and `AnimationController`.
-  - **Fail Fast on Auth Errors**: `skills/nano-banana/scripts/banana.py` and `skills/lyria/scripts/lyria.py` run via `uv` and `python3` to support both Vertex AI / Gemini Enterprise Application Default Credentials (`GOOGLE_CLOUD_PROJECT` + `GOOGLE_CLOUD_LOCATION`) and `GEMINI_API_KEY`. If authentication fails, stop immediately with a clear error message and never silently substitute mock assets or switch pipelines.
+  - **Step 1**: Use `nano-banana` (`uv run skills/nano-banana/scripts/banana.py` with `gemini-nano-banana-2.1`) to create a character reference sheet with `1:2` to `1:3` game proportions, genre-matched camera projection, clear limb separation, and a 4-step color swatch bar.
+  - **Step 2**: Pass the reference sheet via `-i` to `nano-banana` (`uv run skills/nano-banana/scripts/banana.py`) to generate uniform `4x4` animation grids on a flat `#00FF00` or `#FF00FF` chroma-key background with 10% to 15% safety margins around every cell. Then run `skills/sprite-design/scripts` `normalize` to strip the chroma key, prune boundary bleed, center and ground frames at native `256x256+` 2D HD or downsampled `64x64` pixel art, export `.png`, `.json`, `.aseprite`, and looping per-motion `.gif` previews, and wire Ebitengine's `NewGridSpriteSheet` and `AnimationController`.
+  - **Fail Fast on Auth Errors**: `skills/nano-banana/scripts/banana.py`, `skills/lyria/scripts/lyria.py`, and `skills/gemini-omni/scripts/omni.py` run via `uv` and `python3` using Vertex AI / Gemini Enterprise Application Default Credentials (`gcloud auth application-default login --billing-project YOUR_PROJECT_ID`). If authentication fails, stop immediately with a clear error message and never silently substitute mock assets or switch pipelines.
 * **Path B: Pure-Code Procedural `.sprite` DSL (`sprite-design`)**:
   - Best for zero-asset procedural builds, geometric enemies, vehicles, puzzle gems, projectiles, pickups, props, and seamless tilesets.
   - Author declarative `.sprite` files using Z-ordered `part` blocks, SDF and pixel primitives, 12 Retro-HD palettes, 12 4-step material ramps, and keyframed `tag`/`pose` animations. Validate with `go run . validate` and compile in memory (`CompileSpriteDSL`) or export to `.aseprite` and `.png`+`.json`.
@@ -104,7 +104,7 @@ Always align with the user on animation motions, camera projection (side-profile
   - Use `nano-banana` for title screens, seamless `4:1` parallax backgrounds, visual novel portraits, and deckbuilder card art.
   - Use `ebitengineer` for runtime particle pools, `text/v2` HUD typography, 2D `GeoM` camera transforms, and Kage screen shaders.
 
-### 3.2 Audio, Voice Acting & Music Routing (`procedural-sfx` vs. `procedural-music` vs. `lyria` vs. `gemini-omni`)
+### 3.2 Audio, Music & Video Cutscene Routing (`procedural-sfx` vs. `procedural-music` vs. `lyria` vs. `gemini-omni`)
 
 All audio buffers fed into Ebitengine's `audio.Context` or `audio.NewInfiniteLoop` must enforce 4-byte stereo sample frame alignment (`len(pcm) &^ 3`).
 
@@ -115,12 +115,12 @@ All audio buffers fed into Ebitengine's `audio.Context` or `audio.NewInfiniteLoo
   - Composing original multi-channel background music in `.music` DSL (8 to 12+ independent channels, `30s` to `150s+` duration, verified `|` barlines, and `~` cross-barline ties) with sample-exact seamless looping (`audio.NewInfiniteLoop`) and tiny text file sizes.
   - Synthesizing either pure-Go SEGA Mega Drive YM2612 4-operator FM + SN76489 PSG chiptunes (`synth default`) or native macOS Apple CoreAudio real-instrument arrangements (`synth apple` / `-apple` backed by `gs_instruments.dls`).
 * **Choose [`lyria`](../lyria/SKILL.md)** when:
-  - Generating studio-recorded AI music tracks or vocal songs via **Lyria 3.5** (`lyria-3.5` / `lyria-3-pro-preview`) or 30-second loops via **Lyria 3 Clip** (`lyria-3-clip` / `lyria-3-clip-preview`) using `uv run skills/lyria/scripts/lyria.py` (supporting Vertex AI / Gemini Enterprise ADC and `GEMINI_API_KEY` with strict fail-fast auth checks) or `gemini-api music`.
+  - Generating studio-recorded AI music tracks or vocal songs via **Lyria 3.5** (`lyria-3.5` / `lyria-3-pro-preview`) or 30-second loops via **Lyria 3 Clip** (`lyria-3-clip` / `lyria-3-clip-preview`) using `uv run skills/lyria/scripts/lyria.py` with Vertex AI / Gemini Enterprise ADC and strict fail-fast auth checks.
   - Creating soundtracks directly from concept art or screenshots (multimodal image-to-music).
 * **Choose [`gemini-omni`](../gemini-omni/SKILL.md)** when:
-  - Generating single-speaker or multi-speaker character voice acting, narrator voiceovers, boss battle callouts, or animated cutscenes with synchronized dialogue and audio via **Gemini Omni Flash 1.2 & 1.1** (`gemini-omni-1.2-flash`, `gemini-omni-1.1-flash`) using `uv run skills/gemini-omni/scripts/omni.py` (supporting Vertex AI / Gemini Enterprise ADC and `GEMINI_API_KEY` with strict fail-fast auth checks) or `gemini-api`.
-* **Choose a Hybrid Audio Pipeline** when:
-  - Pairing `procedural-sfx` for instant, cooldown-rate-limited gameplay sound effects with `procedural-music` (for sample-exact looping stage themes), `lyria` (for cinematic vocal or orchestral tracks), and `gemini-omni` (for spoken character dialogue and cutscene voiceovers).
+  - Generating, editing, interpolating, extending, or upscaling `3s` to `15s` animated video cutscenes (`360p` to `4k` at `24 FPS`) with native synchronized dialogue, music, and sound effects via **Gemini Omni 1.2 Flash** (`gemini-omni-1.2-flash`) using `uv run skills/gemini-omni/scripts/omni.py` with Vertex AI / Gemini Enterprise ADC and strict fail-fast auth checks.
+* **Choose a Hybrid Audio & Cutscene Pipeline** when:
+  - Pairing `procedural-sfx` for instant, cooldown-rate-limited gameplay sound effects with `procedural-music` (for sample-exact looping stage themes), `lyria` (for cinematic vocal or orchestral tracks), and `gemini-omni` (for animated video cutscenes with synchronized audio).
 
 ---
 
@@ -156,9 +156,9 @@ When guiding a user through building a complete 2D game from scratch, or running
    - Confirm motion tags, camera projection, resolution (`256x256+` 2D HD vs. pixel art), and pipeline path with the user.
    - Activate [`nano-banana`](../nano-banana/SKILL.md) + [`sprite-design`](../sprite-design/SKILL.md) (`normalize`) for the 2-step AI Character Sheet to Sprite Grid pipeline, or [`sprite-design`](../sprite-design/SKILL.md) for pure-code `.sprite` DSL assets and tilesets.
    - Surface `[Sprite Editor](sidecar://agy-game-studio/studio/sprite)` (or a file-scoped `.sprite` pill) and embed per-motion `.gif` previews for visual verification.
-4. **Sound Effects, Voice Acting & Music**:
+4. **Sound Effects, Music & Video Cutscenes**:
    - Activate [`procedural-sfx`](../procedural-sfx/SKILL.md) to create and validate `.sfx` cues.
-   - Activate [`procedural-music`](../procedural-music/SKILL.md) to compose and validate multi-channel `.music` scores (pure-Go YM2612 or `-apple` CoreAudio DLS), [`lyria`](../lyria/SKILL.md) for AI-generated soundtracks, or [`gemini-omni`](../gemini-omni/SKILL.md) (`uv run skills/gemini-omni/scripts/omni.py`) for single/multi-speaker character voice acting and animated cutscenes.
+   - Activate [`procedural-music`](../procedural-music/SKILL.md) to compose and validate multi-channel `.music` scores (pure-Go YM2612 or `-apple` CoreAudio DLS), [`lyria`](../lyria/SKILL.md) for AI-generated soundtracks, or [`gemini-omni`](../gemini-omni/SKILL.md) (`uv run skills/gemini-omni/scripts/omni.py`) for animated `3s` to `15s` video cutscenes with synchronized audio.
    - Surface `[Sound Editor](sidecar://agy-game-studio/studio/sound)` (or a file-scoped `.music`/`.sfx` pill) so the user can audition and mix tracks.
 5. **Parallel Scaling (Optional)**: When building multiple orthogonal game packages or large asset batches simultaneously, activate [`swarm-coding`](../swarm-coding/SKILL.md) or [`parallel`](../parallel/SKILL.md) to coordinate subagents across disjoint file sets.
 6. **Quality Verification, Localhost Playtesting & Cloud Run Deployment**:
