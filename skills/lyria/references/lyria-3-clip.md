@@ -42,9 +42,16 @@
 
 ## CLI & SDK Examples
 
-### 1. `gemini-api` CLI: 30-Second Chiptune Clip
+### 1. Python Script (`uv run scripts/lyria.py`) & `gemini-api` CLI
 
 ```bash
+# Generate a 30-second chiptune clip via uv run scripts/lyria.py (supports GEMINI_API_KEY or Vertex AI / ADC)
+uv run scripts/lyria.py \
+  -p "An energetic 8-bit chiptune arcade melody at 140 BPM in C major. Instrumental only, no vocals." \
+  -m lyria-3-clip \
+  -f chiptune.mp3
+
+# Or generate with gemini-api CLI
 gemini-api music "An energetic 8-bit chiptune arcade melody at 140 BPM in C major. Instrumental only, no vocals." \
   -m lyria-3-clip-preview \
   --out chiptune.mp3

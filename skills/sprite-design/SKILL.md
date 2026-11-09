@@ -75,7 +75,23 @@ Before generating a character, creature, enemy, or game piece, ask the user (usi
 
 ### 2.1 Step 1: Generate the Character Reference Sheet (`nano-banana`)
 
-Use `nano-banana` (or `image-generator`) to create a turnaround or design reference sheet first whenever building a hero, boss, companion, NPC, or multi-part enemy:
+Use `nano-banana` (`uv run skills/nano-banana/scripts/banana.py` or `gemini-api image`, or the `image-generator` subagent) to create a turnaround or design reference sheet first whenever building a hero, boss, companion, NPC, or multi-part enemy:
+
+```bash
+# Via uv + banana.py (supports both Vertex AI / Gemini Enterprise ADC and GEMINI_API_KEY)
+uv run skills/nano-banana/scripts/banana.py \
+  -p "2D game character reference sheet of a black anime cat hero, 1:2 head-to-body ratio, 2D side-profile gameplay angle, clear limb and tail separation, with a printed 4-step color swatch bar" \
+  -m "nano-banana-2.1" -r "2K" -a "1:1" -f "character_sheet.png"
+
+# Or via gemini-api CLI
+gemini-api image \
+  "2D game character reference sheet of a black anime cat hero, 1:2 head-to-body ratio, 2D side-profile gameplay angle, clear limb and tail separation, with a printed 4-step color swatch bar" \
+  --model "gemini-nano-banana-2.1" --image-size "2K" --aspect-ratio "1:1" --out "character_sheet.png"
+```
+
+> [!CAUTION]
+> **Fail Fast on Auth Errors (Never Go Rogue)**:
+> If `gemini-api` fails due to missing OAuth scopes or credentials, use `uv run skills/nano-banana/scripts/banana.py` for native Vertex AI / Gemini Enterprise Application Default Credentials (`GOOGLE_CLOUD_PROJECT` + `GOOGLE_CLOUD_LOCATION`) or `GEMINI_API_KEY`. If credentials are still missing or invalid, **fail fast and stop immediately** with a clear remediation message. Never fabricate placeholder images, silently switch pipelines, or go rogue trying to bypass authentication checks.
 
 1. **Readable Game Proportions (`1:2` to `1:3` Head-to-Body Ratio)**: Keeps the face, eyes, ears, and silhouette distinct at gameplay scale across `256x256`, `128x128`, `64x64`, and `32x32`.
 2. **Exact Genre Camera Angle**: Draw the reference poses in the exact projection used in gameplay (side-profile, 3/4 top-down, isometric `2:1`, or front-facing).
@@ -86,7 +102,19 @@ Use `nano-banana` (or `image-generator`) to create a turnaround or design refere
 
 ### 2.2 Step 2: Generate the Raw `4x4` Sprite Grid & Run `normalize`
 
-Pass the Step 1 character sheet as an image reference (`-i` in `nano-banana`) to generate uniform `4x4` animation grids (`1024x1024` for `256x256` frames) on a flat `#00FF00` bright green or `#FF00FF` magenta chroma-key background with **no grid lines, no borders, and no text labels**. For 8 motions (`32` frames, such as `black_cat_anime`), generate two `4x4` grids (`4` motions per grid, `4` frames per row) and pass both files to `normalize`.
+Pass the Step 1 character sheet as an image reference (`-i` in `uv run skills/nano-banana/scripts/banana.py` or `gemini-api image`) to generate uniform `4x4` animation grids (`1024x1024` for `256x256` frames) on a flat `#00FF00` bright green or `#FF00FF` magenta chroma-key background with **no grid lines, no borders, and no text labels**. For 8 motions (`32` frames, such as `black_cat_anime`), generate two `4x4` grids (`4` motions per grid, `4` frames per row) and pass both files to `normalize`.
+
+```bash
+# Via uv + banana.py (supports Vertex AI / Gemini Enterprise ADC and GEMINI_API_KEY)
+uv run skills/nano-banana/scripts/banana.py \
+  -p "Uniform 4x4 2D sprite sheet grid on a flat #00FF00 chroma-key background, no grid lines or labels, at least 15% empty #00FF00 margin inside every cell. Row 1: 4-frame idle breathing. Row 2: 4-frame walk cycle. Row 3: 4-frame run cycle. Row 4: 4-frame jump arc (crouch anticipation, upward launch, rising ascent, horizontal mid-air apex suspension)." \
+  -i "character_sheet.png" -m "nano-banana-2.1" -r "1K" -a "1:1" -f "raw_grid_part1.png"
+
+# Or via gemini-api CLI
+gemini-api image \
+  "Uniform 4x4 2D sprite sheet grid on a flat #00FF00 chroma-key background, no grid lines or labels, at least 15% empty #00FF00 margin inside every cell. Row 1: 4-frame idle breathing. Row 2: 4-frame walk cycle. Row 3: 4-frame run cycle. Row 4: 4-frame jump arc (crouch anticipation, upward launch, rising ascent, horizontal mid-air apex suspension)." \
+  -i "character_sheet.png" --model "gemini-nano-banana-2.1" --image-size "1K" --aspect-ratio "1:1" --out "raw_grid_part1.png"
+```
 
 Enforce two mandatory layout rules in every Step 2 image generation prompt:
 

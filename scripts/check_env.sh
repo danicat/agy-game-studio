@@ -28,12 +28,11 @@ Validates local environment prerequisites for Antigravity 2D Game Studio:
   - go (Go 1.26+ compiler)
   - wasm_exec.js (Go WebAssembly runtime support in GOROOT)
   - node (Node.js runtime for studio sidecars)
-  - uv (Python package & script runner for Nano Banana 2.1, Lyria 3.5, and sprite tools)
-  - python3 (Python 3.10+ runtime)
+  - uv (Python package & script runner for banana.py, lyria.py, and omni.py)
+  - python3 (Python 3.10+ runtime for Nano Banana, Lyria, and Gemini Omni scripts)
   - file / mimetype (Binary asset container validation)
-  - Gemini Credentials (GEMINI_API_KEY or Vertex AI ADC)
+  - Gemini Credentials (GEMINI_API_KEY or Vertex AI Enterprise ADC)
   - godoctor (Optional/Recommended: Go verification, test analytics, and mutation testing)
-  - kungfu (Optional/Recommended: Agent Skills Gateway CLI)
 EOF
   exit 0
 fi
@@ -147,16 +146,7 @@ else
     "Optional: 'go install github.com/danicat/godoctor@latest'"
 fi
 
-# 7. Check kungfu (Recommended / Optional)
-if command -v kungfu >/dev/null 2>&1; then
-  KF_VER="$(kungfu --version 2>&1 | head -n1 || echo "kungfu installed")"
-  record_row "kungfu (optional)" "PASS" "${KF_VER:0:46}"
-else
-  record_row "kungfu (optional)" "WARN" "Not installed (recommended)" \
-    "Optional: 'go install github.com/danicat/kungfu@latest'"
-fi
-
-# 8. Check file / mimetype utility
+# 7. Check file / mimetype utility
 if command -v file >/dev/null 2>&1; then
   record_row "file utility" "PASS" "Found ($(command -v file))"
 elif command -v mimetype >/dev/null 2>&1; then
@@ -166,7 +156,7 @@ else
     "Install 'file' utility for binary asset MIME-type verification"
 fi
 
-# 9. Check Gemini Credentials (GEMINI_API_KEY or Vertex AI ADC + GCP Project)
+# 8. Check Gemini Credentials (GEMINI_API_KEY or Vertex AI ADC + GCP Project)
 ADC_FILE="${GOOGLE_APPLICATION_CREDENTIALS:-$HOME/.config/gcloud/application_default_credentials.json}"
 GCP_PROJECT="${GOOGLE_CLOUD_PROJECT:-}"
 if [[ -z "$GCP_PROJECT" ]] && command -v gcloud >/dev/null 2>&1; then
@@ -176,7 +166,7 @@ fi
 
 if [[ -n "${GEMINI_API_KEY:-}" ]]; then
   record_row "Gemini Auth" "PASS" "GEMINI_API_KEY is set in environment"
-elif [[ -n "$GCP_PROJECT" && -f "$ADC_FILE" ]]; then
+elif [[ -n "$GCP_PROJECT" ]] && { [[ -f "$ADC_FILE" ]] || (command -v gcloud >/dev/null 2>&1 && gcloud auth application-default print-access-token >/dev/null 2>&1); }; then
   record_row "Gemini Auth" "PASS" "Vertex AI ADC (project: ${GCP_PROJECT:0:22})"
 elif [[ -n "$GCP_PROJECT" ]]; then
   record_row "Gemini Auth" "FAIL" "GCP project (${GCP_PROJECT:0:18}) set, ADC missing" \

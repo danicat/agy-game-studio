@@ -65,9 +65,26 @@ Add `"Instrumental only, no vocals"` to synthesize background beds, game soundtr
 
 ## CLI & SDK Examples
 
-### 1. `gemini-api` CLI: Full Song from Prompt File
+### 1. Python Script (`uv run scripts/lyria.py`) & `gemini-api` CLI
 
 ```bash
+# Generate with uv run scripts/lyria.py (supports GEMINI_API_KEY or Vertex AI / ADC)
+uv run scripts/lyria.py \
+  -p "An atmospheric lo-fi jazz track at 85 BPM in E Minor. Instrumental only, no vocals." \
+  -f lofi_track.mp3 \
+  -m lyria-3.5 \
+  --lyrics-file lofi_track_structure.txt
+
+# Or explicitly pass Vertex AI / Gemini Enterprise flags (ADC via gcloud auth application-default login)
+uv run scripts/lyria.py \
+  --vertexai \
+  --project "${GOOGLE_CLOUD_PROJECT}" \
+  --location "${GOOGLE_CLOUD_LOCATION:-us-central1}" \
+  -p "An atmospheric lo-fi jazz track at 85 BPM in E Minor. Instrumental only, no vocals." \
+  -f lofi_track.mp3 \
+  -m lyria-3.5
+
+# Or generate with gemini-api CLI from a prompt file
 gemini-api music \
   -m lyria-3.5 \
   -f lofi_prompt.txt \

@@ -2,16 +2,18 @@
 name: lyria
 description: >
   Generative music and audio synthesis from text prompts or reference images
-  using Google Lyria models via the gemini-api CLI and Google Gen AI SDKs.
-  Generates 44.1 kHz stereo music clips, full songs with custom lyrics, and
-  instrumental game soundtracks using lyria-3.5 and lyria-3-clip-preview, with
-  support for multimodal image inputs, MP3/WAV export, and Ebitengine audio
-  integration. Activate when composing background music, generating songs,
-  creating game soundtracks from concept art, or producing AI audio clips.
+  using Google Lyria models via uv run scripts/lyria.py, the gemini-api CLI, and
+  Google Gen AI SDKs. Generates 44.1 kHz stereo music clips, full songs with
+  custom lyrics, and instrumental game soundtracks using lyria-3.5 and
+  lyria-3-clip-preview, with first-class support for Vertex AI / Gemini
+  Enterprise (ADC) and Gemini API Key authentication, multimodal image inputs,
+  MP3/WAV export, and Ebitengine audio integration. Activate when composing
+  background music, generating songs, creating game soundtracks from concept
+  art, or producing AI audio clips.
 license: Apache-2.0
 metadata:
   category: media
-  tags: "music, audio, game-dev, bgm, soundtrack, generative-ai, sound, gemini-api"
+  tags: "music, audio, game-dev, bgm, soundtrack, generative-ai, sound, gemini-api, vertex-ai"
   author: Daniela Petruzalek (daniela@danicat.dev)
   version: "0.5.0"
   catalog: https://skills.danicat.dev
@@ -19,13 +21,50 @@ metadata:
 
 # Lyria Music Generation Skill (`lyria`)
 
-Generate **44.1 kHz stereo audio**, full songs with structured lyrics, instrumental game soundtracks, and thematic compositions from text prompts or visual reference images using Google's **Lyria** models (`lyria-3.5`, `lyria-3-clip-preview`, and `lyria-3-pro-preview`) via the **`gemini-api` CLI** (`gemini-api music`) for terminal and coding agent workflows, or the **Google Gen AI SDKs** for application backends.
+Generate **44.1 kHz stereo audio**, full songs with structured lyrics, instrumental game soundtracks, and thematic compositions from text prompts or visual reference images using Google's **Lyria** models (`lyria-3.5`, `lyria-3-clip-preview`, and `lyria-3-pro-preview`) via **`uv run scripts/lyria.py`** (supporting both **Vertex AI / Gemini Enterprise** and **Gemini Developer API**), the **`gemini-api` CLI** (`gemini-api music`), or the **Google Gen AI SDKs** for application backends.
+
+> [!CAUTION]
+> **Strict Fail-Fast Authentication Policy (Never Go Rogue)**:
+> **Never go rogue if `gemini-api` or `scripts/lyria.py` fails.**
+> - If `gemini-api` fails, is not installed, or lacks Vertex AI authentication, run `uv run scripts/lyria.py` (or `uv run skills/lyria/scripts/lyria.py`) with Vertex AI / Application Default Credentials (`GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`, and `gcloud auth application-default login`) or `GEMINI_API_KEY`.
+> - If authentication still fails in `scripts/lyria.py`, **stop immediately**, report the exact authentication error message to the user, and ask them to configure their credentials (`gcloud auth application-default login` + `export GOOGLE_CLOUD_PROJECT=...` or `export GEMINI_API_KEY=...`).
+> - Never attempt unauthorized workarounds, never synthesize fake or mock audio files, never silently substitute procedural audio when the user asked for Lyria, and never probe local credential stores outside standard environment variables and ADC.
 
 ---
 
-## Prerequisites: `gemini-api` CLI Setup
+## Available Scripts
 
-The `gemini-api` CLI is a zero-dependency binary that writes generated audio files directly to disk and prints only the output file path to `stdout`. This keeps raw base64 audio payloads out of agent context windows.
+- **[scripts/lyria.py](scripts/lyria.py)**: PEP 723 standalone Python CLI tool (`uv run scripts/lyria.py`) for text-to-music and image-to-music generation, lyric export, and MP3/WAV audio format output using `google-genai`. Supports both **Vertex AI / Gemini Enterprise** (`--vertexai`, `--project`, `--location`, `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`, ADC) and **Gemini Developer API** (`GEMINI_API_KEY`).
+- **[scripts/test_lyria.py](scripts/test_lyria.py)**: Automated test suite verifying CLI argument parsing, model aliases, multimodal input limit enforcement, and fail-fast credential checks.
+
+---
+
+## Prerequisites: `uv` + `python3` (`scripts/lyria.py`) & `gemini-api` CLI Setup
+
+You can execute Lyria music generation using either the bundled Python script (`uv run scripts/lyria.py`, recommended whenever using **Vertex AI / Gemini Enterprise** or `uv`) or the `gemini-api` CLI binary.
+
+### Option A: `uv` + `python3` (`scripts/lyria.py`) with Vertex AI or Gemini API Key
+
+`scripts/lyria.py` includes inline PEP 723 dependencies (`google-genai>=1.68.0`, `pillow>=10.0.0`, `google-auth>=2.0.0`) so `uv run` resolves an isolated environment automatically without manual `pip install` steps.
+
+```bash
+# 1a. Authenticate with Vertex AI / Gemini Enterprise (Application Default Credentials)
+gcloud auth application-default login
+export GOOGLE_CLOUD_PROJECT="your-gcp-project-id"
+export GOOGLE_CLOUD_LOCATION="us-central1"
+export GOOGLE_GENAI_USE_VERTEXAI="true"
+
+# 1b. Or authenticate with the Gemini Developer API
+export GEMINI_API_KEY="your-api-key"
+
+# 2. Verify CLI flags and fail-fast test suite
+uv run scripts/lyria.py --help
+python3 scripts/test_lyria.py
+```
+
+### Option B: `gemini-api` CLI Setup
+
+The `gemini-api` CLI is a zero-dependency binary that writes generated audio files directly to disk and prints only the output file path to `stdout`.
 
 ```bash
 # 1. Verify or install gemini-api CLI on macOS and Linux
@@ -38,18 +77,15 @@ export GEMINI_API_KEY="your-api-key"
 gemini-api configure --api-key "your-api-key"
 
 # 2b. Or authenticate with a Google Cloud Project / ADC (OAuth2 bearer token)
-# Note: gemini-api does NOT auto-discover application_default_credentials.json, and
-# generativelanguage.googleapis.com requires the 'generative-language' OAuth scope
-# (standard 'gcloud auth application-default login' fails with HTTP 403 ACCESS_TOKEN_SCOPE_INSUFFICIENT).
+# Note: For direct Vertex AI / Gemini Enterprise ADC support without manual token export,
+# use 'uv run scripts/lyria.py --vertexai --project your-gcp-project-id' instead.
 gcloud auth application-default login \
   --scopes="https://www.googleapis.com/auth/cloud-platform,https://www.googleapis.com/auth/generative-language"
 export GEMINI_ACCESS_TOKEN="$(gcloud auth application-default print-access-token)"
 export GEMINI_USER_PROJECT="your-gcp-project-id"
-# (Or pass per-command: --access-token "$(gcloud auth application-default print-access-token)" --user-project "your-gcp-project-id")
 
 # 3. Verify credentials and inspect CLI schemas offline
 gemini-api whoami
-gemini-api models
 gemini-api music --help
 gemini-api music --schema
 ```
@@ -75,8 +111,8 @@ In `agy-game-studio`, `lyria` is the generative studio music engine that complem
   - Choose **`procedural-music`** when you want deterministic note-by-note `.music` scores (8 to 12+ channels, verified `|` barlines, `~` cross-bar ties), sample-exact seamless looping with tiny plain-text files (`5 KB` to `20 KB`), pure-Go SEGA Mega Drive YM2612 + SN76489 chiptune synthesis, macOS CoreAudio (`-apple` / `gs_instruments.dls`) General MIDI rendering, or per-track stem soloing and muting in the Sound tab in Game Dev Studio (`[Sound Editor](sidecar://agy-game-studio/studio/sound)`).
 - **`lyria` + `procedural-sfx` (Hybrid Game Audio)**:
   - Pair `lyria` BGM tracks with `procedural-sfx` (`.sfx` DSL) for low-latency, zero-asset gameplay sound effects (jumps, lasers, sword hits, pickups, UI clicks). Both share a single Ebitengine `audio.Context` at `44,100 Hz`.
-- **`nano-banana` -> `lyria` (Visual-to-Audio Co-Creation)**:
-  - Feed title screens, biome parallax backgrounds, or character reference sheets generated by `nano-banana` into `gemini-api music` (via `gemini-api files upload`) so the soundtrack matches the visual mood and setting defined in `game-design` (`GDD.md`).
+- **`nano-banana` to `lyria` (Visual-to-Audio Co-Creation)**:
+  - Feed title screens, biome parallax backgrounds, or character reference sheets generated by `nano-banana` into `scripts/lyria.py` (`-i biome_concept.png`) or `gemini-api music` so the soundtrack matches the visual mood and setting defined in `game-design` (`GDD.md`).
 
 ### Ebitengine (`ebitengineer`) WAV & MP3 Integration with 4-Byte Alignment (`&^ 3`)
 
@@ -141,16 +177,16 @@ func DecodeMP3WithIntro(ctx *audio.Context, mp3Bytes []byte, introSec float64) (
 
 ## Model Selection & Comparison Matrix
 
-| Model | Model ID (`-m`) | Primary Use Case | Duration | Audio Format | Reference Guide |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Lyria 3.5 (Default)** | `lyria-3.5` | Flagship: full songs, expressive vocals, multi-section arrangements, film and game scoring | Controllable (up to ~3m / 184s) | MP3, WAV | [lyria-3-5.md](references/lyria-3-5.md) |
-| **Lyria 3 Clip** | `lyria-3-clip-preview` | Short clips, 30s stage loops, menu beds, rapid style testing | Exactly 30s | MP3, WAV | [lyria-3-clip.md](references/lyria-3-clip.md) |
-| **Lyria 3 Pro** | `lyria-3-pro-preview` | Full-length preview endpoint with explicit timestamp controls and multi-section arrangements | Up to 184s (~3m) | MP3, WAV | [lyria-3-pro.md](references/lyria-3-pro.md) |
+| Model | Model ID (`-m`) | CLI Aliases (`scripts/lyria.py`) | Primary Use Case | Duration | Audio Format | Reference Guide |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Lyria 3.5 (Default)** | `lyria-3.5` | `lyria-3.5`, `3.5` | Flagship: full songs, expressive vocals, multi-section arrangements, film and game scoring | Controllable (up to ~3m / 184s) | MP3, WAV | [lyria-3-5.md](references/lyria-3-5.md) |
+| **Lyria 3 Clip** | `lyria-3-clip-preview` | `lyria-3-clip`, `clip`, `lyria-clip`, `lyria-3-clip-preview` | Short clips, 30s stage loops, menu beds, rapid style testing | Exactly 30s | MP3, WAV | [lyria-3-clip.md](references/lyria-3-clip.md) |
+| **Lyria 3 Pro** | `lyria-3-pro-preview` | `pro`, `lyria-pro`, `lyria-3-pro-preview` | Full-length preview endpoint with explicit timestamp controls and multi-section arrangements | Up to 184s (~3m) | MP3, WAV | [lyria-3-pro.md](references/lyria-3-pro.md) |
 
-### Model Selection & Deterministic Execution Policy
-- **Full Song & Multi-Phase BGM Production**: Use **Lyria 3.5** (`lyria-3.5`, default for `gemini-api music`) for complete tracks with timestamped transitions (`[0:00 - 0:15] Intro...`), multi-verse vocal delivery, or boss-phase thematic escalation.
-- **Rapid Prototyping & 30s Loops**: Start with **Lyria 3 Clip** (`-m lyria-3-clip-preview`) to iterate quickly on genre combinations, tempos, and 30-second stage or menu loops.
-- **Deterministic Fail-Fast Execution**: `gemini-api music` validates inputs against the Interactions API schema and exits with deterministic status codes (`0` ok, `1` runtime error, `2` usage/validation error, `3` authentication/authorization error). Use `--dry-run -o json` to preview and verify request payloads offline without network calls.
+### Model Selection & Deterministic Fail-Fast Policy
+- **Full Song & Multi-Phase BGM Production**: Use **Lyria 3.5** (`lyria-3.5`, default) for complete tracks with timestamped transitions (`[0:00 - 0:15] Intro...`), multi-verse vocal delivery, or boss-phase thematic escalation.
+- **Rapid Prototyping & 30s Loops**: Start with **Lyria 3 Clip** (`-m lyria-3-clip` or `-m lyria-3-clip-preview`) to iterate quickly on genre combinations, tempos, and 30-second stage or menu loops.
+- **Zero Silent Fallbacks**: `scripts/lyria.py` and `gemini-api music` never silently fall back between models, API endpoints, or authentication providers. Missing `GEMINI_API_KEY` or Vertex AI credentials (`GOOGLE_CLOUD_PROJECT` / ADC), invalid model names, more than 10 reference images, or empty audio responses fail immediately with descriptive `stderr` diagnostics and a non-zero exit code.
 
 ---
 
@@ -167,9 +203,58 @@ Consult the reference cards in `references/` for audio parameters, timing contro
 
 ## Core Execution Workflows
 
-### 1. CLI Execution via `gemini-api music`
+### 1. Python Script Execution via `uv run scripts/lyria.py` (Vertex AI & Gemini API)
 
-Use `gemini-api music` for terminal workflows, shell scripts, and coding agents. By default, it runs `lyria-3.5`, writes the audio straight to disk, and prints only the saved file path to `stdout`:
+Execute `scripts/lyria.py` with `uv run` for full support across both **Vertex AI / Gemini Enterprise (ADC)** and **Gemini Developer API**:
+
+```bash
+# Generate a full song with Lyria 3.5 (default model)
+uv run scripts/lyria.py \
+  -p "An energetic pop-rock song with driving drums and upbeat vocals" \
+  -f "song.mp3" \
+  -m "lyria-3.5" \
+  --lyrics-file "lyrics.txt"
+
+# Generate using Vertex AI / Gemini Enterprise (Application Default Credentials)
+uv run scripts/lyria.py \
+  --vertexai \
+  --project "${GOOGLE_CLOUD_PROJECT}" \
+  --location "${GOOGLE_CLOUD_LOCATION:-us-central1}" \
+  -p "Atmospheric synthwave exploration theme at 110 BPM in D minor with warm analog pads. Instrumental only, no vocals." \
+  -f "./assets/stage_theme.wav" \
+  --format "wav"
+
+# Generate a 30-second chiptune arcade loop with Lyria 3 Clip
+uv run scripts/lyria.py \
+  -p "An energetic 8-bit chiptune arcade melody at 140 BPM in C major. Instrumental only, no vocals." \
+  -f "chiptune.mp3" \
+  -m "lyria-3-clip"
+
+# Multimodal Image-to-Music (compose music inspired by a nano-banana concept image)
+uv run scripts/lyria.py \
+  -p "Ambient relaxing soundscape matching the mood of this landscape. Instrumental only, no vocals." \
+  -i "biome_concept.png" \
+  -f "biome_theme.mp3" \
+  -m "lyria-3.5"
+```
+
+#### `scripts/lyria.py` CLI Argument Reference
+- `-p`, `--prompt`: Text prompt describing style, genre, instruments, BPM, and structure (required).
+- `-f`, `--filename`, `--out`, `-o`: Output audio file path (default: `music.mp3`).
+- `-m`, `--model`: `lyria-3.5` / `3.5` (default), `lyria-3-clip` / `clip` / `lyria-3-clip-preview`, or `pro` / `lyria-3-pro-preview`.
+- `-i`, `--input-image`: Path to input image(s) for visual mood inspiration (up to 10).
+- `--format`: Audio container format (`mp3` or `wav`, default: `mp3`).
+- `--lyrics-file`: Optional path to write generated lyric transcription and structure text.
+- `--api`: `interactions` (default) or `models`.
+- `--vertexai`: Enable Vertex AI / Gemini Enterprise authentication using Application Default Credentials (`gcloud auth application-default login`). Also enabled automatically when `GOOGLE_GENAI_USE_VERTEXAI=true` or when `GOOGLE_CLOUD_PROJECT` is set without `GEMINI_API_KEY`.
+- `--project`: Google Cloud Project ID for Vertex AI (defaults to `GOOGLE_CLOUD_PROJECT` or `GCP_PROJECT`).
+- `--location`: Google Cloud Location for Vertex AI (defaults to `GOOGLE_CLOUD_LOCATION` or `us-central1`).
+
+---
+
+### 2. CLI Execution via `gemini-api music`
+
+You can also use `gemini-api music` for terminal workflows when `gemini-api` is installed and configured:
 
 ```bash
 # Generate a full song with Lyria 3.5 (default model)
@@ -219,17 +304,26 @@ gemini-api music "Upbeat synthwave with a driving bassline" --out "synthwave.mp3
 
 ---
 
-### 2. SDK Integration Patterns (Application Backends)
+### 3. SDK Integration Patterns (Application Backends)
 
-For embedding Lyria music generation into backend services, use the typed Google Gen AI SDKs:
+For embedding Lyria music generation into backend services, use the typed Google Gen AI SDKs with either `GEMINI_API_KEY` or Vertex AI (`vertexai=True`):
 
 #### Interactions API (`client.interactions.create`, Recommended)
 
 ```python
 import base64
+import os
 from google import genai
 
-client = genai.Client()
+# Supports GEMINI_API_KEY or Vertex AI (GOOGLE_GENAI_USE_VERTEXAI=true, GOOGLE_CLOUD_PROJECT, GOOGLE_CLOUD_LOCATION)
+if os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "").lower() in ("true", "1"):
+    client = genai.Client(
+        vertexai=True,
+        project=os.environ["GOOGLE_CLOUD_PROJECT"],
+        location=os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1"),
+    )
+else:
+    client = genai.Client()
 
 # Generate full-length song with timestamp structure
 prompt = """

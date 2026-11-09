@@ -62,9 +62,17 @@ Pass up to 10 images (such as concept art, character designs, or landscapes) to 
 
 ## CLI & SDK Examples
 
-### 1. `gemini-api` CLI: Full Song with Timestamps & Structure
+### 1. Python Script (`uv run scripts/lyria.py`) & `gemini-api` CLI
 
 ```bash
+# Generate with uv run scripts/lyria.py (supports GEMINI_API_KEY or Vertex AI / ADC)
+uv run scripts/lyria.py \
+  -p "An emotional cinematic folk song in E Minor at 90 BPM with fingerpicked acoustic guitar and cello." \
+  -m lyria-3-pro-preview \
+  -f mountain_folk.mp3 \
+  --lyrics-file mountain_folk_lyrics.txt
+
+# Or generate with gemini-api CLI
 gemini-api music \
   -m lyria-3-pro-preview \
   -f mountain_folk_prompt.txt \
