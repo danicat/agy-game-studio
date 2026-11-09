@@ -3,6 +3,6 @@
   "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Playtest Studio and Sound Studio UI extension sidecar for Antigravity.",
+  "description": "Game Dev Studio UI extension sidecar for Antigravity (Playtest tab, Sound Editor, and Sprite Editor).",
   "license": "Apache-2.0"
 }

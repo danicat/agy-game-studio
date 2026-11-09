@@ -1,10 +1,10 @@
-title "Horizons Beyond the Blade - End Credits Theme (12-Channel, 90s Slow-Progression Violin Edition)"
+title "Horizons Beyond the Blade - End Credits Theme (13-Channel, 90s Slow-Progression Violin Edition)"
 type song
 tempo andantino 96
 time 4/4
 
 # ==============================================================================
-# 1. Modern Hybrid & Orchestral 12-Channel Palette
+# 1. Modern Hybrid & Orchestral 13-Channel Palette (1:1 Instrument-to-Channel)
 #    Uses band-limited harmonic synthesis (violin, voice, strings, harp, epiano,
 #    flute, bell) with delayed vibrato bloom and zero static noise on melodies.
 # ==============================================================================
@@ -12,19 +12,15 @@ inst celtic_voice wave=voice    vol=0.10 pan=-0.12 adsr=0.050,0.10,0.85,0.15 vib
 inst solo_violin  wave=violin   vol=0.11 pan=0.15  adsr=0.065,0.12,0.88,0.16 lpf=0.65 vib=5.5,3.5
 inst kosho_lead   wave=sawtooth vol=0.06 pan=-0.22 adsr=0.030,0.08,0.75,0.12 lpf=0.42 vib=5.2,3.0
 inst flute        wave=flute    vol=0.06 pan=0.28  adsr=0.045,0.08,0.78,0.12 vib=4.6,2.5
+inst bells        wave=bell     vol=0.04 pan=-0.35 adsr=0.003,0.20,0.18,0.10 fm=3.0,1.2
 inst epiano       wave=epiano   vol=0.07 pan=-0.25 adsr=0.008,0.22,0.45,0.14 fm=2.0,1.4
 inst strings      wave=strings  vol=0.06 pan=0.00  adsr=0.220,0.25,0.88,0.30 lpf=0.45
 inst choir        wave=voice    vol=0.05 pan=0.32  adsr=0.250,0.25,0.85,0.30 vib=4.2,2.2
 inst harp_left    wave=harp     vol=0.07 pan=-0.45 adsr=0.004,0.10,0.28,0.06
 inst harp_right   wave=harp     vol=0.05 pan=0.45  adsr=0.004,0.08,0.22,0.06
-inst bells        wave=bell     vol=0.04 pan=-0.35 adsr=0.003,0.20,0.18,0.10 fm=3.0,1.2
 inst fretless     wave=fm       vol=0.09 pan=0.00  adsr=0.018,0.10,0.68,0.08 fm=1.0,1.0 lpf=0.42
 inst sub_bass     wave=sine     vol=0.10 pan=0.00  adsr=0.025,0.12,0.82,0.10
-inst kick         wave=sine     vol=0.11 pan=0.00  adsr=0.002,0.06,0.10,0.03 freq=125Hz->36Hz noise=0.08,0.18
-inst snare        wave=noise    vol=0.07 pan=0.12  adsr=0.002,0.08,0.12,0.05 noise_filter=0.48
-inst hat          wave=noise    vol=0.03 pan=0.28  adsr=0.001,0.02,0.05,0.01 noise_filter=0.90
-inst tom          wave=sine     vol=0.09 pan=-0.18 adsr=0.002,0.08,0.15,0.03 freq=180Hz->72Hz noise=0.05,0.10
-inst crash        wave=noise    vol=0.05 pan=-0.22 adsr=0.008,0.28,0.22,0.15 noise_filter=0.72
+inst drums        wave=kick     vol=0.11 pan=0.00  adsr=0.002,0.06,0.10,0.03 freq=125Hz->36Hz noise=0.08,0.18
 
 # Shared 8-bar and 4-bar rest blocks
 pattern rest_8bar = R:1 | R:1 | R:1 | R:1 | R:1 | R:1 | R:1 | R:1
@@ -144,15 +140,15 @@ pattern kosho_coda =
   F5:1 | D5:1 | B4:1 | C5:1
 
 # ==============================================================================
-# 6. Channel 4: Woodwind Flute (Phases 3-4) & Crystalline Chime Bells (Phases 5-7)
+# 6. Channel 4 & 5: Woodwind Flute (Phases 3-4) & Crystalline Chime Bells (Phases 5-7)
 # ==============================================================================
 pattern flute_m2a =
-  flute(E5):1 | flute(C5):2 flute(E5):2 |
-  flute(D5):1 | flute(B4):2 flute(D5):2
+  E5:1 | C5:2 E5:2 |
+  D5:1 | B4:2 D5:2
 
 pattern flute_m2b =
-  flute(C5):2 flute(A4):2 | flute(C5):1 |
-  flute(G4):2 flute(E4):2 | flute(B4):1
+  C5:2 A4:2 | C5:1 |
+  G4:2 E4:2 | B4:1
 
 pattern bells_m3 =
   A5:2 C6:2 | F6:1 |
@@ -368,19 +364,19 @@ pattern drums_coda =
   crash:2 R:2 | R:1 | R:1 | R:1
 
 # ==============================================================================
-# 14. Master 12-Channel Arrangement (36 Bars / 144 Beats / 90.00s @ 96 BPM)
-#     Progressively builds from 3 channels (@pp->p, half notes) in Phase 1
-#     to all 12 channels (@f->ff, 16th arps + duet + ballad drums) in Phase 6.
+# 14. Master 13-Channel Arrangement (36 Bars / 144 Beats / 90.00s @ 96 BPM)
+#     1:1 mapping between declared instruments and mixer channels.
 # ==============================================================================
 track ch01_vocal_lead      celtic_voice: vocal_m1a@pp->p@legato         | vocal_m1b@p->mp@legato         | rest_4bar               | vocal_m2b@mp->mf@legato         | vocal_m3@mf->f@legato   | vocal_m4@f->ff@legato  | vocal_coda@diminuendo
 track ch02_solo_violin     solo_violin:  rest_4bar                      | violin_m1b@fade_in@legato      | violin_m2a@mp@legato    | violin_m2b@mp->mf@legato        | violin_m3@mf->f@legato  | violin_m4@f->ff@legato | violin_coda@fade_out
 track ch03_koshiro_synth   kosho_lead:   rest_8bar                                                       | rest_4bar               | kosho_m2b@fade_in               | kosho_m3@mp->f          | kosho_m4@f@tenuto      | kosho_coda@fade_out
-track ch04_flute_and_bells bells:        rest_8bar                                                       | flute_m2a@fade_in       | flute_m2b@mp->mf@legato         | bells_m3@mf->f          | bells_m4@f->ff         | bells_coda@fade_out
-track ch05_fm_epiano       epiano:       rest_4bar                      | epiano_m1b@fade_in             | epiano_m2a@mp           | epiano_m2b@mp->mf               | epiano_m3@mf->f         | epiano_m4@f            | epiano_coda@fade_out
-track ch06_warm_strings    strings:      strings_m1a@fade_in@lpf=0.22   | strings_m1b@p->mp@lpf=0.32     | strings_m2a@mp@lpf=0.40 | strings_m2b@mp->mf              | strings_m3@crescendo    | strings_m4@ff          | strings_coda@fade_out@lpf=0.30
-track ch07_celestial_choir choir:        rest_8bar                                                       | rest_8bar                                                 | choir_m3@fade_in        | choir_m4@swell         | choir_coda@fade_out
-track ch08_celtic_harp     harp_left:    harp_m1a@pp->p                 | harp_m1b@p->mp                 | harp_m2a@mp             | harp_m2b@mp->mf                 | harp_m3@mf->f           | harp_m4@f->ff          | harp_coda@fade_out
-track ch09_crystal_arp     harp_right:   rest_8bar                                                       | rest_4bar               | pluck_m2b@staccato@fade_in      | pluck_m3@staccato@cresc | pluck_m4@staccato@f    | rest_4bar
-track ch10_fretless_bass   fretless:     rest_8bar                                                       | fretless_m2a@fade_in    | fretless_m2b@mp->mf             | fretless_m3@mf->f       | fretless_m4@f->ff      | rest_4bar
-track ch11_sub_warmth      sub_bass:     rest_4bar                      | sub_m1b@fade_in                | sub_m2@mp->mf                                             | sub_m3@mf->f            | sub_m4@f->ff           | sub_coda@fade_out
-track ch12_drums:                        rest_8bar                                                       | rest_4bar               | drums_m2b@fade_in               | drum_anthem_8bar@mf->f  | drum_anthem_8bar@f->ff | drums_coda@fade_out
+track ch04_flute           flute:        rest_8bar                                                       | flute_m2a@fade_in       | flute_m2b@mp->mf@legato         | rest_8bar               | rest_8bar              | rest_4bar
+track ch05_bells           bells:        rest_8bar                                                       | rest_8bar                                                 | bells_m3@mf->f          | bells_m4@f->ff         | bells_coda@fade_out
+track ch06_fm_epiano       epiano:       rest_4bar                      | epiano_m1b@fade_in             | epiano_m2a@mp           | epiano_m2b@mp->mf               | epiano_m3@mf->f         | epiano_m4@f            | epiano_coda@fade_out
+track ch07_warm_strings    strings:      strings_m1a@fade_in@lpf=0.22   | strings_m1b@p->mp@lpf=0.32     | strings_m2a@mp@lpf=0.40 | strings_m2b@mp->mf              | strings_m3@crescendo    | strings_m4@ff          | strings_coda@fade_out@lpf=0.30
+track ch08_celestial_choir choir:        rest_8bar                                                       | rest_8bar                                                 | choir_m3@fade_in        | choir_m4@swell         | choir_coda@fade_out
+track ch09_celtic_harp     harp_left:    harp_m1a@pp->p                 | harp_m1b@p->mp                 | harp_m2a@mp             | harp_m2b@mp->mf                 | harp_m3@mf->f           | harp_m4@f->ff          | harp_coda@fade_out
+track ch10_crystal_arp     harp_right:   rest_8bar                                                       | rest_4bar               | pluck_m2b@staccato@fade_in      | pluck_m3@staccato@cresc | pluck_m4@staccato@f    | rest_4bar
+track ch11_fretless_bass   fretless:     rest_8bar                                                       | fretless_m2a@fade_in    | fretless_m2b@mp->mf             | fretless_m3@mf->f       | fretless_m4@f->ff      | rest_4bar
+track ch12_sub_warmth      sub_bass:     rest_4bar                      | sub_m1b@fade_in                | sub_m2@mp->mf                                             | sub_m3@mf->f            | sub_m4@f->ff           | sub_coda@fade_out
+track ch13_drums           drums:        rest_8bar                                                       | rest_4bar               | drums_m2b@fade_in               | drum_anthem_8bar@mf->f  | drum_anthem_8bar@f->ff | drums_coda@fade_out

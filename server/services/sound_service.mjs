@@ -550,7 +550,7 @@ function scanLibraryDirectory(dirPath, expectedExt, typeLabel) {
   });
 }
 
-function scanWorkspaceForSoundFiles(workspaceDir, maxDepth = 3) {
+function scanWorkspaceForSoundFiles(workspaceDir, maxDepth = 5) {
   const results = [];
   const skipDirs = new Set(['.git', 'node_modules', 'dist', '.next', 'build', 'coverage']);
 
@@ -596,22 +596,27 @@ function scanWorkspaceForSoundFiles(workspaceDir, maxDepth = 3) {
 }
 
 /**
- * 1. Lists all built-in `.music` and `.sfx` library files and scans `workspace` (up to depth 3).
+ * 1. Lists all `.music` and `.sfx` files in `workspace` (up to depth 5), plus built-in library metadata.
  */
 export async function listSoundFiles({ workspace } = {}) {
   const musicLibrary = scanLibraryDirectory(MUSIC_SCRIPTS_DIR, '.music', 'music');
   const sfxLibrary = scanLibraryDirectory(SFX_SCRIPTS_DIR, '.sfx', 'sfx');
 
+  const rawWorkspace =
+    workspace && typeof workspace === 'string' && workspace.trim()
+      ? workspace.trim()
+      : process.env.PLAYTEST_WORKSPACE && process.env.PLAYTEST_WORKSPACE.trim()
+      ? process.env.PLAYTEST_WORKSPACE.trim()
+      : REPO_ROOT;
+
   let workspaceFiles = [];
-  if (workspace && typeof workspace === 'string' && workspace.trim()) {
-    try {
-      const resolvedWorkspace = normalizeInputPath(workspace, 'workspace');
-      if (fs.existsSync(resolvedWorkspace) && fs.statSync(resolvedWorkspace).isDirectory()) {
-        workspaceFiles = scanWorkspaceForSoundFiles(resolvedWorkspace, 3);
-      }
-    } catch {
-      workspaceFiles = [];
+  try {
+    const resolvedWorkspace = normalizeInputPath(rawWorkspace, 'workspace');
+    if (fs.existsSync(resolvedWorkspace) && fs.statSync(resolvedWorkspace).isDirectory()) {
+      workspaceFiles = scanWorkspaceForSoundFiles(resolvedWorkspace, 5);
     }
+  } catch {
+    workspaceFiles = [];
   }
 
   return {

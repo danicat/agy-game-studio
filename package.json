@@ -1,7 +1,8 @@
 {
   "name": "agy-game-studio",
+  "displayName": "Game Dev Studio",
   "version": "0.2.0",
-  "description": "2D game development studio and live WebAssembly Playtest & Procedural Sound Studio UI extension for Antigravity, Ebitengine, and Go.",
+  "description": "Game Dev Studio UI extension for Antigravity, Ebitengine, and Go with live WebAssembly Playtest tab, Sound Editor (.music & .sfx), and Sprite Editor (.sprite & .aseprite).",
   "type": "module",
   "main": "sidecars/studio/main.mjs",
   "repository": {
@@ -26,8 +27,7 @@
     "sidecar",
     "ui-extension",
     "ebitengine",
-    "playtest-studio",
-    "sound-studio",
+    "game-dev-studio",
     "procedural-audio",
     "procedural-music",
     "procedural-sfx",

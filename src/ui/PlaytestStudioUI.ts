@@ -23,7 +23,7 @@ import {
   onWorkspaceChange,
   getFullStudioUrl,
   resolveWorkspaceUri,
-  fetchHealth,
+  syncWorkspaceFromHost,
   fetchRecentSessions,
   buildWasm,
   sendBugToChat,
@@ -43,6 +43,7 @@ import {
   detectActiveViewportBounds,
   type GifFrameInput
 } from '../engine/GifEncoder.ts';
+import { openStudioProjectModal } from './StudioModals.ts';
 
 export class StudioNotifier {
   private static container: HTMLElement | null = null;
@@ -113,12 +114,12 @@ export class StudioNotifier {
   }
 
   public static error(message: string, detail?: string): void {
-    console.error('[Playtest Studio Error]', message, detail || '');
+    console.error('[Game Dev Studio Error]', message, detail || '');
     this.show(message, 'error', 0, detail);
   }
 
   public static fatal(title: string, error: unknown, context?: string): void {
-    console.error('[Playtest Studio FATAL]', title, error, context ?? '');
+    console.error('[Game Dev Studio FATAL]', title, error, context ?? '');
     const existing = document.getElementById('fatal-error-overlay');
     if (existing) {
       existing.remove();
@@ -146,7 +147,7 @@ export class StudioNotifier {
       <div class="fatal-dialog">
         <div class="fatal-icon">🚨</div>
         <h2 class="fatal-title"></h2>
-        <p class="fatal-desc">A critical error occurred in Playtest Studio. Failed fast with full diagnostics:</p>
+        <p class="fatal-desc">A critical error occurred in Game Dev Studio. Failed fast with full diagnostics:</p>
         <pre class="fatal-pre"></pre>
         <div class="fatal-actions">
           <button type="button" class="btn btn-danger" id="fatal-reload-btn">Reload Studio</button>
@@ -280,9 +281,8 @@ export class PlaytestStudioUI {
     }
     try {
       const resolved = await resolveWorkspaceUri(workspaceUri);
-      const unifiedPath = resolved.projectPath || resolved.workspace;
-      if (unifiedPath) {
-        setWorkspacePath(unifiedPath);
+      if (resolved.workspace) {
+        setWorkspacePath(resolved.workspace);
       }
       this.activePkg = '.';
       this.updateHeaderInputsUI();
@@ -294,63 +294,45 @@ export class PlaytestStudioUI {
   }
 
   private async syncSessionAndWorkspaceFromServer(): Promise<void> {
-    let shouldAutoBuild = Boolean(
-      new URLSearchParams(window.location.search).get('workspace')?.trim()
-    );
+    await syncWorkspaceFromHost();
+    this.updateHeaderInputsUI();
+    this.updateSessionBadgeUI();
+  }
 
-    if (window.sidecar?.conversationId && !getSessionId()) {
-      try {
-        setSessionId(window.sidecar.conversationId);
-      } catch {
-        // Ignore invalid conversationId format
+  private formatProjectBadgeLabel(workspacePath: string, pkg: string): string {
+    const trimmed = (workspacePath || '').trim().replace(/\/+$/, '');
+    if (!trimmed) {
+      return 'No project selected';
+    }
+    const parts = trimmed.split('/').filter(Boolean);
+    const baseName = parts[parts.length - 1] || trimmed;
+    const cleanPkg = (pkg || '.').trim() || '.';
+    return `${baseName} (${cleanPkg})`;
+  }
+
+  private openProjectPicker(): void {
+    openStudioProjectModal({
+      currentWorkspace: getWorkspacePath(),
+      currentPkg: this.activePkg,
+      onSelectProject: (workspacePath: string, pkg: string) => {
+        setWorkspacePath(workspacePath);
+        this.activePkg = (pkg || '.').trim() || '.';
+        this.updateHeaderInputsUI();
+        StudioNotifier.info(
+          `Selected project: ${this.formatProjectBadgeLabel(workspacePath, this.activePkg)}`,
+          2400
+        );
       }
-    }
-
-    if (window.sidecar && typeof window.sidecar.onWorkspaceChange === 'function') {
-      window.sidecar.onWorkspaceChange((uris: string[]) => {
-        if (Array.isArray(uris) && uris.length > 0 && uris[0]) {
-          void this.applyWorkspaceUri(uris[0]);
-        }
-      });
-    }
-
-    try {
-      const health = await fetchHealth();
-      if (health.activeSessionId && !getSessionId()) {
-        setSessionId(health.activeSessionId);
-      }
-      if (health.defaultWorkspace) {
-        const hasGoMod = await this.applyWorkspaceUri(health.defaultWorkspace);
-        shouldAutoBuild = shouldAutoBuild || hasGoMod;
-      }
-      this.updateHeaderInputsUI();
-      this.updateSessionBadgeUI();
-    } catch (err) {
-      console.warn('[PlaytestStudioUI] Sidecar health check skipped or unavailable:', err);
-    }
-
-    if (window.sidecar && typeof window.sidecar.getWorkspaceUris === 'function') {
-      try {
-        const uris = await Promise.race([
-          window.sidecar.getWorkspaceUris(),
-          new Promise<string[]>((resolve) => setTimeout(() => resolve([]), 1200)),
-        ]);
-        if (Array.isArray(uris) && uris.length > 0 && uris[0]) {
-          const hasGoMod = await this.applyWorkspaceUri(uris[0]);
-          shouldAutoBuild = shouldAutoBuild || hasGoMod;
-        }
-      } catch (err) {
-        console.warn('[PlaytestStudioUI] getWorkspaceUris skipped:', err);
-      }
-    }
-
-    if (shouldAutoBuild && getWorkspacePath().trim() && !this.isBuilding && !this.runner.isRunning()) {
-      void this.handleBuildAndRun();
-    }
+    });
   }
 
   private renderHeader(): void {
     const ws = getWorkspacePath();
+    const badgeLabel = this.formatProjectBadgeLabel(ws, this.activePkg);
+    const badgeTooltip = ws
+      ? `${ws} (${this.activePkg || '.'}) — Click to switch project`
+      : 'Click to open a Go game project';
+
     this.headerEl.innerHTML = `
       <div class="header-left">
         <button
@@ -366,14 +348,30 @@ export class PlaytestStudioUI {
 
         <div class="workspace-controls">
           <input
-            type="text"
+            type="hidden"
             id="workspace-input"
-            class="input-text workspace-path-input"
-            placeholder="Go project path (e.g. /path/to/game)"
             value="${this.escapeAttr(ws)}"
-            aria-label="Go project or package directory path"
-            title="Go Project or Package Directory Path"
           />
+          <button
+            type="button"
+            id="btn-open-project"
+            class="btn btn-sm btn-outline btn-header-action"
+            data-tooltip="Open Go Game Project &amp; Package"
+            title="Open Go Game Project &amp; Package"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            <span class="btn-label">Open Project</span>
+          </button>
+          <button
+            type="button"
+            id="playtest-project-label"
+            class="btn btn-sm btn-ghost"
+            style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; max-width: 240px; overflow: hidden; text-overflow: ellipsis; border: 1px solid var(--studio-border);"
+            title="${this.escapeAttr(badgeTooltip)}"
+            aria-label="Active Go project and package"
+          >
+            ${this.escapeHtml(badgeLabel)}
+          </button>
           <button
             type="button"
             id="btn-build-run"
@@ -451,9 +449,9 @@ export class PlaytestStudioUI {
           target="_blank"
           rel="noopener noreferrer"
           class="btn btn-ghost btn-icon preview-only-btn"
-          data-tooltip="Open Full Playtest Studio in Browser Tab"
-          title="Open Full Playtest Studio in Browser Tab"
-          aria-label="Open Full Playtest Studio in Browser Tab"
+          data-tooltip="Open Game Dev Studio in Browser Tab"
+          title="Open Game Dev Studio in Browser Tab"
+          aria-label="Open Game Dev Studio in Browser Tab"
         >
           <span>↗️</span>
         </a>
@@ -613,13 +611,24 @@ export class PlaytestStudioUI {
           <div class="ready-form-row">
             <div class="ready-field">
               <label for="ready-workspace-input">Go Project or Package Directory</label>
-              <input
-                type="text"
-                id="ready-workspace-input"
-                class="input-text"
-                placeholder="/path/to/ebitengine-game or /path/to/repo/cmd/game"
-                value="${this.escapeAttr(ws)}"
-              />
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <input
+                  type="text"
+                  id="ready-workspace-input"
+                  class="input-text"
+                  style="flex: 1;"
+                  placeholder="/path/to/ebitengine-game or /path/to/repo/cmd/game"
+                  value="${this.escapeAttr(ws)}"
+                />
+                <button
+                  type="button"
+                  id="btn-ready-open-project"
+                  class="btn btn-outline btn-sm"
+                  title="Browse Go Project &amp; Package"
+                >
+                  📂 Open Project
+                </button>
+              </div>
             </div>
           </div>
 
@@ -762,20 +771,14 @@ export class PlaytestStudioUI {
 
     const syncWs = (val: string) => {
       setWorkspacePath(val);
-      if (headerWsInput.value !== val) headerWsInput.value = val;
-      if (readyWsInput.value !== val) readyWsInput.value = val;
+      if (headerWsInput && headerWsInput.value !== val) headerWsInput.value = val;
+      if (readyWsInput && readyWsInput.value !== val) readyWsInput.value = val;
+      this.updateHeaderInputsUI();
     };
 
-    headerWsInput.addEventListener('change', () => syncWs(headerWsInput.value));
-    headerWsInput.addEventListener('keydown', (e: KeyboardEvent) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        syncWs(headerWsInput.value);
-        void this.handleBuildAndRun();
-      }
-    });
-    readyWsInput.addEventListener('input', () => syncWs(readyWsInput.value));
-    readyWsInput.addEventListener('keydown', (e: KeyboardEvent) => {
+    headerWsInput?.addEventListener('change', () => syncWs(headerWsInput.value));
+    readyWsInput?.addEventListener('input', () => syncWs(readyWsInput.value));
+    readyWsInput?.addEventListener('keydown', (e: KeyboardEvent) => {
       if (e.key === 'Enter') {
         e.preventDefault();
         syncWs(readyWsInput.value);
@@ -783,17 +786,26 @@ export class PlaytestStudioUI {
       }
     });
 
+    this.headerEl.querySelector('#btn-open-project')?.addEventListener('click', () => {
+      this.openProjectPicker();
+    });
+    this.headerEl.querySelector('#playtest-project-label')?.addEventListener('click', () => {
+      this.openProjectPicker();
+    });
+    this.viewportEl.querySelector('#btn-ready-open-project')?.addEventListener('click', () => {
+      this.openProjectPicker();
+    });
+
     onWorkspaceChange(() => this.updateHeaderInputsUI());
     onSessionChange(() => this.updateSessionBadgeUI());
 
     // Build & Run buttons
     this.headerEl.querySelector('#btn-build-run')?.addEventListener('click', () => {
-      syncWs(headerWsInput.value);
       void this.handleBuildAndRun();
     });
 
     this.viewportEl.querySelector('#btn-ready-build')?.addEventListener('click', () => {
-      syncWs(readyWsInput.value);
+      if (readyWsInput) syncWs(readyWsInput.value);
       void this.handleBuildAndRun();
     });
 
@@ -995,6 +1007,9 @@ export class PlaytestStudioUI {
     window.addEventListener(
       'keydown',
       (e: KeyboardEvent) => {
+        if (this.headerEl.classList.contains('studio-view-hidden')) {
+          return;
+        }
         const target = e.target as HTMLElement | null;
         const isInput =
           target &&
@@ -1058,8 +1073,9 @@ export class PlaytestStudioUI {
     if (!workspace) {
       StudioNotifier.error(
         'Missing Go Workspace Path',
-        'Enter the path to your Ebitengine Go workspace in the header bar before building.'
+        'Click "Open Project" in the header bar to select your Ebitengine Go project before building.'
       );
+      this.openProjectPicker();
       return;
     }
 
@@ -1068,9 +1084,10 @@ export class PlaytestStudioUI {
     this.setBuildButtonsLoading(true);
 
     try {
-      StudioNotifier.info(`Compiling Go WASM in "${workspace}"...`, 2500);
+      StudioNotifier.info(`Compiling Go WASM in "${workspace}" (${this.activePkg || '.'})...`, 2500);
       const result = await buildWasm({
-        workspace
+        workspace,
+        pkg: this.activePkg
       });
 
       if (!result.ok) {
@@ -1084,6 +1101,7 @@ export class PlaytestStudioUI {
       }
 
       this.activePkg = result.pkg || '.';
+      this.updateHeaderInputsUI();
       this.showActiveGameStage();
       await this.runner.launchBuild(result.buildId);
 
@@ -1701,6 +1719,16 @@ export class PlaytestStudioUI {
     }
     if (readyWsInput && readyWsInput.value !== ws) {
       readyWsInput.value = ws;
+    }
+    const projectLabelEl = this.headerEl.querySelector(
+      '#playtest-project-label'
+    ) as HTMLElement | null;
+    if (projectLabelEl) {
+      projectLabelEl.textContent = this.formatProjectBadgeLabel(ws, this.activePkg);
+      const tip = ws
+        ? `${ws} (${this.activePkg || '.'}) — Click to switch project`
+        : 'Click to open a Go game project';
+      projectLabelEl.setAttribute('title', tip);
     }
     const fullLink = this.headerEl.querySelector('#btn-full-studio') as HTMLAnchorElement | null;
     if (fullLink) {

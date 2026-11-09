@@ -1,0 +1,15 @@
+title "black_cat_anime"
+type sprite
+sheet "black_cat_anime.png"
+size 256x256
+grid 4x8
+fps 10
+
+tag idle       0..3 pingpong
+tag walk       4..7 loop
+tag run        8 once, 9..11 loop
+tag jump       12..15 once
+tag fall       16..19 loop
+tag crouch     20..23 once
+tag sleep      24..27 pingpong
+tag attack     28..31 once

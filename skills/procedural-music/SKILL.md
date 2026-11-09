@@ -16,60 +16,84 @@ metadata:
   category: game-dev
   tags: "procedural-music, procedural-audio, game-dev, ym2612, coreaudio, chiptune, synth, bgm, music-dsl, music-theory"
   author: Daniela Petruzalek (daniela@danicat.dev)
-  version: "0.2.0"
+  version: "0.3.0"
   catalog: https://skills.danicat.dev
 ---
 
 # Procedural music: Original composition guide and dual-engine DSL
 
-This skill provides a **Music Composition DSL**, a music-theory checker, and **two synthesis options** from a single `.music` score:
-1. **Default (Non-Apple)**: A pure-Go **SEGA Mega Drive YM2612 4-operator FM + band-limited SN76489 PSG + harmonic DSP** synth with zero external assets.
-2. **Apple (`-apple`)**: A native **macOS CoreAudio real-instrument synth** backed by Apple's built-in Roland GS / General MIDI instrument bank (`gs_instruments.dls`) that upgrades the score with sampled guitars, electric and slap bass, brass sections, strings, keyboards, and acoustic drums.
+This skill provides a **Music Composition DSL** (`.music`), a music-theory validator, and **two synthesis engines** from a single plain-text score:
+1. **Default (Non-Apple)**: A pure-Go **SEGA Mega Drive YM2612 4-operator FM + band-limited SN76489 PSG + harmonic DSP** synth with zero external assets or OS dependencies.
+2. **Apple (`-apple`)**: A native **macOS CoreAudio real-instrument synth** backed by Apple's built-in Roland GS / General MIDI bank (`gs_instruments.dls`) that renders the same `.music` score with sampled guitars, electric and slap bass, brass sections, strings, keyboards, and acoustic drums.
 
 > [!IMPORTANT]
 > **Compose original music, not formulaic clones**:
 > Classic 16-bit soundtracks (*Streets of Rage*, *Shinobi III*, *Gaiares*, and *Elemental Master*) succeed because each track builds a distinct world through its own tempo, instrument palette, rhythmic grid, and macro-form. Never stamp every song from a single template:
 > - **Match the palette to the setting**: A street-club track uses FM synth-brass, electric piano, slap bass, and PSG leads with zero guitars. A ninja horseback stage contrasts shamisen and koto ostinatos against brass and toms. A gothic shooter pairs twin harmonizing guitars with pipe organ and strings.
-> - **Use 8 to 12+ independent channels**: Give each musical role its own track (`30s` to `150s+` duration) so counter-melodies, harmonies, and arpeggios stack on top of the main riff instead of replacing it.
+> - **Use 8 to 12+ independent channels**: Give each musical role its own track (`30s` to `150s+` duration for full BGM loops) so counter-melodies, harmonies, and arpeggios stack on top of the main riff instead of replacing it.
 > - **Respect cross-bar phrasing and re-attacked stabs**: Tie sustained melody notes and pads smoothly across barlines without false re-attacks, while writing explicit re-attacks and release gaps (`R:16`) for syncopated chord stabs and bass pulses.
-> - **Anchor low frequencies in `C1–C2` (`32–130 Hz`)**: Keep sub-bass and bass fundamentals in Octave 1 and Octave 2 so **50% to 75%** of spectral energy sits below `260 Hz` with zero stationary noise on percussion or melodic voices.
+> - **Anchor low frequencies in `C1` to `C2` (`32 Hz` to `130 Hz`)**: Keep sub-bass and bass fundamentals in Octave 1 and Octave 2 so **50% to 75%** of spectral energy sits below `260 Hz` with zero stationary noise on percussion or melodic voices.
+
+---
+
+## Companion skills and workflow integration
+
+- **`procedural-music` vs. `lyria` (Deterministic DSL vs. AI Audio Generation)**:
+  - Use **`procedural-music`** when you want deterministic, sample-exact looping with zero gap/pop seams, tiny plain-text scores (`5 KB` to `20 KB`), pure-Go WebAssembly portability, authentic 16-bit YM2612 FM + SN76489 PSG chiptune timbres, macOS CoreAudio (`-apple`) General MIDI instrument upgrades, or per-track stem muting and soloing.
+  - Use **`lyria`** when you need AI-generated acoustic, orchestral, ambient, or cinematic audio files (`.wav` or `.mp3`) where generative audio texture is preferred over note-by-note score control and zero-asset synthesis.
+- **`vibe-game-developer` and `game-design`**: Map each game state (title screen, exploration stage, boss phase, victory fanfare, and game over) to its own tempo, musical mode, instrument palette, and playback mode (looped vs. one-off).
+- **`procedural-sfx`**: Share a single Ebitengine `audio.Context` (`44,100 Hz`) between `.music` BGM players and `.sfx` sound cues (`SoundSystem.PlaySFX(cueName, sfxPCM, cooldown)`). Keeping BGM bass anchored below `260 Hz` leaves mid/high headroom so transient SFX cut through the mix cleanly.
+- **`ebitengineer`**: Embed `.music` files with `//go:embed`, pre-compile scores to PCM bytes once at startup or scene load (never inside `Update()` or `Draw()`), and mask all stereo PCM lengths and byte offsets with `&^ 3`.
+- **`game-dev-studio` (Sound tab in Game Dev Studio / Sound Editor)**: When creating, editing, or reviewing `.music` files in Antigravity, surface a `sidecar://` pill in chat so the user can open **Game Dev Studio** with the **Sound tab** (**Sound Editor**) in focus (`[Sound Editor](sidecar://agy-game-studio/studio/sound)` or `[song.music](sidecar://agy-game-studio/studio/sound?file=/abs/path/to/song.music)`). The Sound Editor uses the standardized **Open File**, **Open Artifact**, **Save**, and **Export** menu (never auto-loading a song or populating a combo box with internal skill files on startup) alongside action buttons to toggle **GUI** vs. **Text** mode and **Wave** vs. **Spectrum** (`< 260 Hz` FFT) visualizers, switch `🎛️ YM2612` vs. `🍎 CoreAudio`, solo (`S`) or mute (`M`) individual stems in real time, and export `.wav` files.
 
 ---
 
 ## Available scripts and reference scores
 
-- `scripts/sound.go`: Music DSL lexer and parser (`ParseDSL`, `CompileDSL`, `LoadDSLFile`), band-limited harmonic and FM synth (`SynthesizeScore`, `SynthesizeScoreProcedural`), music-theory checker (`ValidateScoreTheory`, `ValidateProductionBGM`), DSP filters (`SliceLoopPCM`, `ApplyLowPassFilter`, `ApplyHighPassFilter`, `ApplyBitcrush`), `SoundSystem` player, and WAV exporter (`ExportWAV`).
+- `scripts/sound.go`: Music DSL lexer and parser (`ParseDSL`, `CompileDSL`, `LoadDSLFile`), band-limited harmonic and FM synth (`SynthesizeScore`, `SynthesizeScoreWithStems`, `SynthesizeScoreProcedural`), music-theory checker (`ValidateScoreTheory`, `ValidateProductionBGM`), DSP post-processing pipeline (`SliceLoopPCM`, `ApplyLowPassFilter`, `ApplyHighPassFilter`, `ApplyBitcrush`), `SoundSystem` player, and WAV exporter (`ExportWAV`).
 - `scripts/ym2612_bank.go`: Hardware-accurate SEGA Mega Drive **YM2612 (OPN2)** 4-operator integer FM + band-limited PolyBLEP **SN76489 PSG** + exponential-decay percussion engine (`stepYM2612Voice`, `stepYM2612Drum`).
 - `scripts/gm_instruments.go`: General MIDI program (`0..127`) and Channel 10 drum kit (`27..87`) resolver (`ParseGMProgram`, `ParseGMDrumNote`, `ResolveGMProgram`, `ResolveGMDrumNote`).
 - `scripts/apple_synth_darwin.go` & `scripts/apple_synth_other.go`: Native macOS `AudioToolbox` (`MIDISynth` / `DLSSynth`) offline renderer (`SynthesizeScoreApple`) backed by `gs_instruments.dls`.
 - `scripts/sound_test.go`: Automated tests verifying drift-free timing, music theory rules, YM2612 periodicity, drum decay hygiene, Non-Apple vs. Apple waveform distinctness, and all reference scores.
-- `scripts/play.go`: CLI checker (`validate`), player (`play`, `demo`), and WAV exporter (`export`) supporting the `-apple` flag.
+- `scripts/play.go`: CLI validator (`validate`), player (`play`, `demo`), WAV exporter (`export`), JSON diagnostics and binary stem exporter (`synth-json`), and preset catalog (`presets-json`), all supporting the `-apple` flag.
 - **Five classic 16-bit study scores** (illustrating five distinct compositional styles):
   - `scripts/bare_knuckle_intro.music`: *Bare Knuckle / Streets of Rage - Intro* (Yuzo Koshiro, `100 BPM`, 41 bars / `98.4s`). Dark urban pad and triplet/delay PSG lead building into a syncopated 3-voice FM synth-brass house hook, slap-bass groove, and soaring counter-melody.
   - `scripts/ground_zero.music`: *Shinobi III - Ground Zero* (`96 BPM`, 56 bars / `140s`). Lyrical rock ballad using modal mixture (`C` Major + borrowed `C` Aeolian chords) over an evolving 3-cycle backing arrangement.
-  - `scripts/gaiares_level2.music`: *Gaiares - Mission 2 Ice Stage* (Shinobu Ogawa, `134 BPM`, 73 bars / `130.7s`). Sci-fi shooter theme featuring a 2-bar solo drum intro, multi-bar cross-bar legato leads over rapid PSG arpeggios, and a 33-bar asymmetric loop with a 1-bar solo drum-break turnaround.
-  - `scripts/shinobi2_stage2.music`: *The Super Shinobi II / Shinobi III - Idaten* (Morihiko Akiyama, `150 BPM`, 98 bars / `156.8s`). Fast East-Asian fusion action theme framing a 44-bar multi-section loop with a `3+3+3+3+2+2` shamisen/koto pluck ostinato and galloping toms.
-  - `scripts/elemental_master_stage1.music`: *Elemental Master - Dance of Flame* (Toshiharu Yamanishi, `126 BPM`, 69 bars / `131.4s`). Neoclassical symphonic metal anthem with an 8-bar ceremonial fanfare intro, twin harmonizing FM guitars in parallel 3rds and 6ths, and driving 16th-note bass.
-- **Additional original scores**: `scripts/battle_theme.music` (32-bar boss battle theme) and `scripts/credits_theme.music` (36-bar violin and choir credits ballad).
+  - `scripts/gaiares_level2.music`: *Gaiares - Mission 2 Ice Stage* (Shinobu Ogawa, `148 BPM`, 73 bars / `130.7s`). Sci-fi shooter theme featuring a 2-bar solo drum intro, multi-bar cross-bar legato leads over rapid PSG arpeggios, and a 33-bar asymmetric loop with a 1-bar solo drum-break turnaround.
+  - `scripts/shinobi2_stage2.music`: *The Super Shinobi II / Shinobi III - Idaten* (Morihiko Akiyama, `134 BPM`, 98 bars / `156.8s`). Fast East-Asian fusion action theme framing a 44-bar multi-section loop with a `3+3+3+3+2+2` shamisen/koto pluck ostinato and galloping toms.
+  - `scripts/elemental_master_stage1.music`: *Elemental Master - Dance of Flame* (Toshiharu Yamanishi, `150 BPM`, 69 bars / `131.4s`). Neoclassical symphonic metal anthem with an 8-bar ceremonial fanfare intro, twin harmonizing FM guitars in parallel 3rds and 6ths, and driving 16th-note bass.
+- **Four additional original game scores**:
+  - `scripts/dawn_strategy_battle.music`: *Dawn Strategy Battle* (`132 BPM`). Tactical RPG battle theme with layered brass, counterpoint strings, and driving percussion.
+  - `scripts/despair_theme.music`: *Despair Theme* (`76 BPM`). Somber minor-key dramatic theme with slow harmonic swells and isolated echo phrases.
+  - `scripts/battle_theme.music`: *Battle Theme* (`160 BPM`, 32 bars). High-tempo boss combat theme.
+  - `scripts/credits_theme.music`: *Credits Theme* (`96 BPM`, 36 bars, 13 channels). Reflective violin, flute, tubular bells, and choir epilogue ballad.
 
 ---
 
-## 1. Core architecture and PCM alignment
+## 1. Core architecture, DSP helpers, and PCM alignment
 
 ### 1.1 Two synthesis options (`Default` vs. `Apple`)
 The engine compiles readable `.music` text scores into 16-bit 44.1 kHz stereo PCM buffers using one of two synthesis engines:
 * **Default / Non-Apple (`synth default`, or omit `-apple`)**: Uses zero external assets or OS libraries. Synthesizes SEGA Mega Drive **YM2612 (OPN2)** 4-operator FM voices using the 256-entry 12-bit quarter-wave `logsin` and 11-bit `exp` ROM tables (`-8176..+8176`), 20-bit phase counters with 5-bit `keyCode` detune (`DT 0..7`) and multiplier (`MUL 0..15`), and 10-bit envelope stages (`AR`, `D1R`, `SL`, `D2R`, `RR`, `RS`) clocked at `17,756 Hz`. Multi-carrier algorithms (`ALG 4` and `ALG 5`) use calibrated carrier Total Levels (`TL`) and 14-bit floating-point scaling (`float64(out14) / 8192.0`) so chords never clip or buzz. SN76489 PSG pulse waves use `polyBLEP` anti-aliasing, and percussion voices apply exponential decay envelopes (`math.Exp(-decayRate * t)`) so sustained drum slots never leak stationary white noise.
 * **Apple Real Instruments (`synth apple` or `-apple` CLI flag)**: Uses macOS's built-in `AudioToolbox` `MIDISynth` / `DLSSynth` AudioUnit backed by `/System/Library/Components/CoreAudio.component/Contents/Resources/gs_instruments.dls`. Each track renders on its own isolated stereo AudioUnit with natural `NoteOff` release tails, upgrading the same `.music` score with real sampled instruments while following every dynamic ramp and stereo pan.
-* **Drift-free multi-track timing & C1 soft-knee master bus**: Every track converts beat divisions to sample frames using cumulative time rounding (`int(math.Round(cursorSec * 44100))`). `MixTracksPCM` sums all stereo tracks with a $C^1$-continuous soft-knee master limiter above 85% full scale so peaks never hard-clip.
+* **Drift-free multi-track timing & C1 soft-knee master bus**: Every track converts beat divisions to sample frames using cumulative time rounding (`int(math.Round(cursorSec * 44100))`). `MixTracksPCM` sums all stereo tracks in 64-bit float / 32-bit integer space with a $C^1$-continuous soft-knee master limiter above 85% full scale so peaks never hard-clip or wrap around.
+* **Master & per-track stem rendering (`SynthesizeScoreStemsWithOptions`)**: Renders both the master stereo mix and isolated per-track stereo PCM slices (`[][]byte`) in a single pass, powering real-time channel solo/mute mixing in the Sound Editor (Sound tab in Game Dev Studio) and interactive stem layering in games.
 
 ### 1.2 Mandatory 4-byte PCM frame alignment (`&^ 3`)
-`Ebitengine` audio output uses 16-bit signed Little-Endian stereo PCM at 44,100 Hz (`176,400` bytes/sec):
+Ebitengine audio output uses 16-bit signed Little-Endian stereo PCM at 44,100 Hz (`176,400` bytes/sec):
 * Every stereo sample frame is **4 bytes** (2 bytes Left + 2 bytes Right).
-* `Ebitengine` functions `audio.Context`, `audio.NewInfiniteLoop`, and `Seek` **panic at runtime** if given a buffer length or seek offset that isn't divisible by 4. Always mask lengths and offsets with `&^ 3`:
+* Ebitengine functions `audio.Context`, `audio.NewInfiniteLoop`, `audio.NewInfiniteLoopWithIntro`, and stream `Seek` **panic at runtime** if given a buffer length or seek offset that is not divisible by 4. Always mask lengths and offsets with `&^ 3`:
   ```go
   alignedLen := len(pcm) &^ 3
   alignedOffset := seekBytes &^ 3
   ```
+
+### 1.3 Built-in DSP post-processing helpers (`scripts/sound.go`)
+For dynamic runtime audio effects (such as underwater muffling, radio filters, retro DAC crunch, or custom loop slicing), `scripts/sound.go` provides four 4-byte aligned DSP utilities:
+1. **`SliceLoopPCM(pcm []byte, startSec, endSec float64)`**: Extracts a sample-accurate, 4-byte aligned sub-region `[startSec, endSec]` from a rendered PCM buffer for custom loop regions or trimming intro/outro sections.
+2. **`ApplyLowPassFilter(pcm []byte, alpha float64)`**: Single-pole IIR low-pass filter (`alpha` in `(0.0, 1.0]`) that warms harsh harmonics or muffles BGM when paused or underwater.
+3. **`ApplyHighPassFilter(pcm []byte, alpha float64)`**: Single-pole IIR high-pass filter (`alpha` in `(0.0, 1.0)`) that removes DC offset and sub-bass rumble for radio or speaker effects.
+4. **`ApplyBitcrush(pcm []byte, bitDepth, downsample int)`**: Quantizes bit depth and holds stereo sample frames for retro 4-bit/8-bit DAC crunch.
 
 ---
 
@@ -91,11 +115,11 @@ time 4/4
 | Tempo Marking | Default BPM | Typical Character & Scene Fit |
 | :--- | :--- | :--- |
 | `larghissimo` / `grave` / `largo` / `lento` / `larghetto` | `24` / `42` / `50` / `56` / `63` | Solemn, mysterious, or atmospheric intros |
-| `adagio` / `adagietto` | `70` / `76` | Slow, reflective themes and quiet sanctuaries |
-| `andante` / `andantino` | `88` / `96` | Flowing pace for lyrical stage themes and credits ballads |
+| `adagio` / `adagietto` | `70` / `76` | Slow, reflective themes and quiet sanctuaries (*Despair Theme*) |
+| `andante` / `andantino` | `88` / `96` | Flowing pace for lyrical stage themes and credits ballads (*Ground Zero*, *Credits Theme*) |
 | `moderato` / `allegretto` | `112` / `120` | Mid-tempo urban grooves (`100 BPM` *Streets of Rage*), exploration, and club beats |
-| `allegro` | `138` | Upbeat action stages (`126–150 BPM` *Elemental Master*, *Gaiares*, *Idaten*) |
-| `vivace` / `vivacissimo` | `160` / `172` | High-energy boss battles and intense combat |
+| `allegro` | `138` | Upbeat action stages (`126` to `150 BPM` *Dawn Strategy Battle*, *Idaten*, *Gaiares*, *Elemental Master*) |
+| `vivace` / `vivacissimo` | `160` / `172` | High-energy boss battles and intense combat (*Battle Theme*) |
 | `presto` / `prestissimo` | `184` / `204` | Fast escape sequences and final boss phases |
 
 ### 2.2 Instrument patches (`inst`) and built-in studio defaults
@@ -107,19 +131,24 @@ inst fm_brass_echo wave=ym2612_brass      gm=synth_brass_1 vol=0.13 pan=0.24 lpf
 inst psg_lead      wave=psg_square        vol=0.15 pan=-0.10
 inst fm_bass       wave=ym2612_slap_bass
 inst sub_bass      wave=sub_bass          gm=electric_bass
+inst drums         wave=kick              vol=0.28 pan=0.00
 ```
 
-A standard **8-piece studio drum kit** (`kick`, `snare`, `tom_hi`, `tom_mid`, `tom_low`, `hat`, `open_hat`, `crash`) is **pre-seeded in every score**. You can reference `kick`, `snare`, `tom_hi`, `tom_mid`, `tom_low`, `hat`, `open_hat`, and `crash` directly in `pattern` and `track` blocks without writing `inst` lines unless you want to customize a drum's gain, pan, or pitch sweep.
+> [!IMPORTANT]
+> **1:1 `inst`-to-`track` Channel Relationship**:
+> Maintain a **1:1 relationship** between `inst` declarations and `track` channels in every `.music` score so the **Sound Editor** (`game-dev-studio`) displays one channel strip per instrument with matching `Vol` and `Pan` controls.
+> - Give each instrument its own dedicated `track` channel (rather than multiplexing two melodic instruments on one track).
+> - A standard **8-piece studio drum kit** (`kick`, `snare`, `tom_hi`, `tom_mid`, `tom_low`, `hat`, `open_hat`, `crash`) is pre-seeded for pattern events (`kick:8`, `snare:8`, `hat:8`). Declare a single primary drum channel instrument (such as `inst drums wave=kick vol=0.28 pan=0.00` or `inst kick wave=kick vol=0.28 pan=0.00`) for your percussion `track`: adjusting that channel's volume or pan in the Sound Editor mixer scales and pans all pre-seeded drum kit hits on that track proportionally.
 
 | Waveform (`wave=`) | Default `gm=` Upgrade (`-apple`) | Studio Archetype Defaults & Best Musical Roles |
 | :--- | :--- | :--- |
 | `ym2612_brass` | `brass_section` (`synth_brass_1`, `synth_brass_2`) | `vol=0.12 pan=0.20 adsr=0.025,0.16,0.86,0.14 vib=4.8,0.06 lpf=0.36`. Punchy 4-op FM synth-brass for syncopated chord stabs (*Streets of Rage*), fanfares, and warm swells. |
 | `ym2612_epiano`, `ym2612_bell` | `epiano1`, `vibraphone` (`tubular_bells`) | `epiano`: `vol=0.13 lpf=0.38`; `bell`: `vol=0.060 lpf=0.64`. Crystalline OPN2 electric piano and FM chime for intro chords, inner-voice stabs, and melody doubling. |
 | `ym2612_guitar`, `ym2612_rhythm_guitar` | `overdriven_guitar`, `distortion_guitar` | `guitar`: `vol=0.16 vib=5.5,3.50 lpf=0.46`; `rhythm_guitar`: `vol=0.10 lpf=0.42`. 4-op FM rock leads, twin-guitar parallel harmonies (*Elemental Master*), and power chords. |
-| `ym2612_bass`, `ym2612_slap_bass`, `sub_bass` | `electric_bass`, `slap_bass_1`, `synth_bass_1` | `bass`: `vol=0.25 lpf=0.055`; `slap_bass`: `vol=0.22 lpf=0.065`; `sub_bass`: `vol=0.24 lpf=0.036`. Anchors `C1–C2` (`32–130 Hz`). |
+| `ym2612_bass`, `ym2612_slap_bass`, `sub_bass` | `electric_bass`, `slap_bass_1`, `synth_bass_1` | `bass`: `vol=0.25 lpf=0.055`; `slap_bass`: `vol=0.22 lpf=0.065`; `sub_bass`: `vol=0.24 lpf=0.036`. Anchors `C1` to `C2` (`32 Hz` to `130 Hz`). |
 | `ym2612_strings`, `ym2612_choir`, `ym2612_flute` | `string_ensemble_1`, `choir_aahs`, `flute` | `strings`/`choir`: `vol=0.10 lpf=0.32`; `flute`: `vol=0.12 vib=5.5,2.20 lpf=0.42`. Ensemble string pads, vocal choir textures, and woodwind counter-lines. |
 | `psg_square`, `psg_arp` | `lead_square`, `orchestral_harp` (`clavinet`) | `psg_square`: `vol=0.050 duty=0.50 lpf=0.42`; `psg_arp`: `vol=0.072 duty=0.25 lpf=0.44`. Band-limited SN76489 pulse waves for chip leads, delay echoes, and fast `:16` arpeggios. |
-| `koto`, `shamisen`, `harp`, `guitar` | `koto`, `shamisen`, `orchestral_harp`, `nylon_guitar` | Plucked string voices (`vol=0.11–0.13`) for East-Asian fusion ostinatos (*Idaten*) and acoustic intros. |
+| `koto`, `shamisen`, `harp`, `guitar` | `koto`, `shamisen`, `orchestral_harp`, `nylon_guitar` | Plucked string voices (`vol=0.11` to `0.13`) for East-Asian fusion ostinatos (*Idaten*) and acoustic intros. |
 | `violin`, `cello`, `piano`, `organ`, `oboe`, `clarinet`, `shakuhachi` | `violin`, `cello`, `piano`, `church_organ`, `oboe`, `clarinet`, `shakuhachi` | Orchestral strings, keyboard, and solo woodwind models with calibrated attack, vibrato, and filter curves. |
 | `kick`, `snare`, `tom`, `hat`, `open_hat`, `crash` | `gm_drum=kick`, `snare`, `tom_hi`, `tom_mid`, `tom_low`, `hat`, `open_hat`, `crash` | Pre-seeded 8-piece exponential-decay Mega Drive drum kit in default mode; acoustic GM drum kit in `-apple` mode. |
 
@@ -127,7 +156,7 @@ A standard **8-piece studio drum kit** (`kick`, `snare`, `tom_hi`, `tom_mid`, `t
 | :--- | :--- | :--- |
 | `gm` / `program` | `0..127` or GM name | Real `gs_instruments.dls` instrument for `-apple` (inferred from `wave=` if omitted). |
 | `gm_drum` / `drum_note` | `27..87` or drum name | General MIDI Channel 10 percussion note (`kick`, `snare`, `hat`, `open_hat`, `crash`, `tom_hi`, `tom_mid`, `tom_low`). |
-| `vol` | `0.0` .. `1.0` | Voice gain override. Keep mids/highs around `0.05–0.18` and bass around `0.20–0.25`. |
+| `vol` | `0.0` .. `1.0` | Voice gain override. Keep mids/highs around `0.05` to `0.18` and bass around `0.20` to `0.25`. |
 | `pan` | `-1.0` .. `+1.0` | Constant-power stereo pan (`-1.0` left, `0.0` center, `+1.0` right). |
 | `adsr` | `A,D,S,R` | Envelope override: Attack (sec), Decay (sec), Sustain (`0..1`), Release (sec). |
 | `vib` | `rateHz,depthHz` | LFO vibrato rate and depth override in Hz (`vib=5.5,2.20`). |
@@ -170,20 +199,30 @@ Events inside `pattern` and `track` blocks follow `<target>[:<duration>][*<repea
 
 ---
 
-## 3. Music theory and composition best practices from five 16-bit classics
+## 3. Music theory and composition best practices from classic 16-bit soundtracks
 
-To compose original songs that feel alive and distinct rather than formulaic, apply these eight principles drawn from *Streets of Rage*, *Gaiares*, *Shinobi III* (*Ground Zero* and *Idaten*), and *Elemental Master*.
+To compose original songs that feel alive and distinct rather than formulaic, apply these principles drawn from *Streets of Rage*, *Gaiares*, *Shinobi III* (*Ground Zero* and *Idaten*), and *Elemental Master*.
 
-### 3.1 Choose a distinct genre palette and macro-form for each song
-Never force every track into the same instrument list or an identical `8-bar A + 8-bar B` loop. Pick a structural archetype that fits the scene's dramatic arc:
+### 3.1 Scene playback baselines and structural archetypes
+Match the playback mode, duration, tempo, and macro-form to the gameplay role:
+
+| Scene / Event Type | Playback Mode | Typical Duration | Typical BPM Range | Composition Style & Structural Notes |
+| :--- | :--- | :--- | :--- | :--- |
+| **Stage / Gameplay** | **Looped** (`audio.NewInfiniteLoop`) | `60s` to `180s+` | `100` to `160 BPM` | Multi-section arc (*Intro -> Theme A -> Theme B -> Climax -> Turnaround*) to prevent loop fatigue during extended play. |
+| **Boss Battle** | **Looped** (`audio.NewInfiniteLoop`) | `45s` to `120s` | `135` to `180+ BPM` | Driving syncopation, harmonic minor or Phrygian tension, aggressive 4-op FM leads, and octave `:16` bass. |
+| **Title / Menu / Sanctuary** | **Looped** (`audio.NewInfiniteLoop`) | `30s` to `90s` | `70` to `125 BPM` | Memorable motif or atmospheric pad/arpeggio texture setting the game world's tone. |
+| **Game Over** | **One-Off** (`Play(pcm, false)`) | `4s` to `15s` | `60` to `90 BPM` | Non-looping single play. Descending minor cadence or quiet resolution that keeps retry friction low. |
+| **Stage Clear / Fanfare** | **One-Off** (`Play(pcm, false)`) | `5s` to `15s` | `120` to `160 BPM` | Non-looping single play. Crisp ascending brass/bell fanfare with a clean final chord release. |
+
+Never force every full-length BGM track into the same instrument list or an identical `8-bar A + 8-bar B` loop. Pick a structural archetype that fits the scene's dramatic arc:
 
 | Archetype & Study Track | Tempo & Feel | Core Instrument Palette | Macro-Form Architecture |
 | :--- | :--- | :--- | :--- |
 | **Urban Electronic / Club Groove** (`bare_knuckle_intro.music`) | `100 BPM` (`moderato`), syncopated house/funk | **Zero guitars**: 3-voice FM synth-brass (`brass_section`, `synth_brass_1`, `synth_brass_2`), `epiano1`, `psg_square` lead + `1/8` `clavinet` delay, `slap_bass_1`, `string_ensemble_1`. | **Through-composed 2-phase arc (`41 bars`)**: `8-bar` drumless dark intro -> `8-bar` pulsing bass + club beat buildup -> `8-bar` 3-voice brass hook -> `8-bar` climax adding high PSG counter-lead + harmony -> `9-bar` drumless brass/sub-bass fade outro. |
-| **Sci-Fi / Crystalline Shmup** (`gaiares_level2.music`) | `134 BPM` (`allegro`), propulsive & airy | Bright FM lead + echo, `vibraphone` bell, `epiano1`, `brass_section`, `orchestral_harp` `:16` PSG arps, `electric_bass` + `slap_bass_1`. | **Asymmetric loop with drum break (`73 bars`)**: `2-bar` solo drum fill over `Ab1` bass pedal -> `33-bar` main loop (`32` melodic bars + `1` solo drum-break turnaround bar) x 2 -> `5-bar` fade. |
-| **East-Asian Fusion / High-Speed Action** (`shinobi2_stage2.music`) | `150 BPM` (`allegro`), galloping momentum | Plucked `shamisen` / `koto` / `orchestral_harp` ostinato, galloping `tom_mid` percussion, heroic FM lead, brass, and driving bass. | **Ostinato frame + multi-section loop (`98 bars`)**: `4-bar` shamisen/tom intro -> `44-bar` loop (`A` heroic theme -> `B` modal lift -> `C` breakdown -> `4-bar` shamisen bridge) x 2 -> `6-bar` fade. |
-| **Neoclassical / Symphonic Action** (`elemental_master_stage1.music`) | `126 BPM` (`allegro`), dramatic & driving | Twin harmonizing `overdriven_guitar` + `distortion_guitar` in parallel 3rds/6ths, `epiano1`, `string_ensemble_1`, driving `:16` bass. | **Fanfare intro + twin-lead anthem (`69 bars`)**: `8-bar` ceremonial fanfare intro with tom rolls -> `28-bar` multi-theme loop x 2 -> `5-bar` fade. |
-| **Lyrical Stage / Epilogue Ballad** (`ground_zero.music`) | `96 BPM` (`andantino`), nostalgic & spacious | Expressive solo lead + `:16` lower-octave shadow echo, `epiano1`, `brass_section`, `string_ensemble_1`, `orchestral_harp` arps, `C1–C2` bass. | **Invariant melody over evolving cycles (`56 bars`)**: `4-bar` intro -> Cycle 1 (`A+B`, sparse bass, no arps) -> Cycle 2 & 3 (`A+B`, driving `:16` octave bass + open-fifth arps) -> `4-bar` coda. |
+| **Sci-Fi / Crystalline Shmup** (`gaiares_level2.music`) | `148 BPM` (`allegro`), propulsive & airy | Bright FM lead + echo, `vibraphone` bell, `epiano1`, `brass_section`, `orchestral_harp` `:16` PSG arps, `electric_bass` + `slap_bass_1`. | **Asymmetric loop with drum break (`73 bars`)**: `2-bar` solo drum fill over `Ab1` bass pedal -> `33-bar` main loop (`32` melodic bars + `1` solo drum-break turnaround bar) x 2 -> `5-bar` fade. |
+| **East-Asian Fusion / High-Speed Action** (`shinobi2_stage2.music`) | `134 BPM` (`allegro`), galloping momentum | Plucked `shamisen` / `koto` / `orchestral_harp` ostinato, galloping `tom_mid` percussion, heroic FM lead, brass, and driving bass. | **Ostinato frame + multi-section loop (`98 bars`)**: `4-bar` shamisen/tom intro -> `44-bar` loop (`A` heroic theme -> `B` modal lift -> `C` breakdown -> `4-bar` shamisen bridge) x 2 -> `6-bar` fade. |
+| **Neoclassical / Symphonic Action** (`elemental_master_stage1.music`) | `150 BPM` (`allegro`), dramatic & driving | Twin harmonizing `overdriven_guitar` + `distortion_guitar` in parallel 3rds/6ths, `epiano1`, `string_ensemble_1`, driving `:16` bass. | **Fanfare intro + twin-lead anthem (`69 bars`)**: `8-bar` ceremonial fanfare intro with tom rolls -> `28-bar` multi-theme loop x 2 -> `5-bar` fade. |
+| **Lyrical Stage / Epilogue Ballad** (`ground_zero.music`) | `96 BPM` (`andantino`), nostalgic & spacious | Expressive solo lead + `:16` lower-octave shadow echo, `epiano1`, `brass_section`, `string_ensemble_1`, `orchestral_harp` arps, `C1` to `C2` bass. | **Invariant melody over evolving cycles (`56 bars`)**: `4-bar` intro -> Cycle 1 (`A+B`, sparse bass, no arps) -> Cycle 2 & 3 (`A+B`, driving `:16` octave bass + open-fifth arps) -> `4-bar` coda. |
 
 ### 3.2 Cross-bar continuity vs. re-attacked stabs (the articulation dualism)
 Two opposite mistakes ruin procedural game music: **chopping legato notes at barlines** and **merging repeated rhythmic stabs into flat drones**.
@@ -198,7 +237,7 @@ Two opposite mistakes ruin procedural game music: **chopping legato notes at bar
 ### 3.3 Rhythmic diversity: Tresillos, triplets-over-16ths, slap bass, and additive ostinatos
 Give each composition its own rhythmic signature instead of reusing one rhythm everywhere:
 * **Dotted-eighth tresillo stabs (`3+3+3+3+2+2` or `2+3+3+3+3+2`)**: Grouping 16th notes in 3s (`:8.`) against a 4/4 drum beat creates classic 90s club synth-brass hooks (*Bare Knuckle*) and shamisen action ostinatos (*Idaten*: `E4:8. A4 B4 C5 B4:8 A4`).
-* **Polyrhythmic triplets (`:8t`, `:4t`) over a 16th-note grid**: To make a lead melody float freely over a straight 4/4 backing (*Bare Knuckle* `Bars 1–16`), mix eighth-note triplets (`:8t`) and quarter-note triplets (`:4t`) with `~` ties (`:1~1~4t`, `:1~2t`, `:1~1~1`) and running durations:
+* **Polyrhythmic triplets (`:8t`, `:4t`) over a 16th-note grid**: To make a lead melody float freely over a straight 4/4 backing (*Bare Knuckle* `Bars 1` to `16`), mix eighth-note triplets (`:8t`) and quarter-note triplets (`:4t`) with `~` ties (`:1~1~4t`, `:1~2t`, `:1~1~1`) and running durations:
   ```text
   # Exact 16-bar haunting intro lead mixing :8t and :4t triplets with ~ multi-bar ties
   R:2 A4:8t C5 E5 D5:1~1~4t G5:1~2t C5:8t B4 C5:1~1 E5:8t D5:2~2t
@@ -209,7 +248,7 @@ Give each composition its own rhythmic signature instead of reusing one rhythm e
   1. **Pulsing pre-drop buildup (`3+3+4+6` = `:8.*2 :4 :4.`)**: Re-attacks a root pedal (`(A2:8.*2 A2:4 A2:4.)*8`) to build tension before the main riff drops.
   2. **Funk offbeat slap-bass (`G2:16 A2:8`)**: Alternates a `1/16` lower-whole-step pickup (`G2:16`) with an `:8` root slap (`((G2:16 A2:8)*4 A2:8. G2:16)*15`).
   3. **Driving `:16` rock/octave bass**: Continuous 16th-note root or octave leaps (`(C1 C2):16*4`) for high-tempo rock and boss stages.
-* **Half-bar call-and-response (`2 + (3+3+2)`)**: For lyrical melodies (*Ground Zero*), pair a sustained `:2` half-note call on Beats 1–2 with a `:8. :8. :8` response on Beats 3–4. Never split a held `:2` peak into two `:4 :4` quarter notes.
+* **Half-bar call-and-response (`2 + (3+3+2)`)**: For lyrical melodies (*Ground Zero*), pair a sustained `:2` half-note call on Beats 1 and 2 with a `:8. :8. :8` response on Beats 3 and 4. Never split a held `:2` peak into two `:4 :4` quarter notes.
 
 ### 3.4 Multi-voice riff voicing and independent counter-melody layering
 1. **Split 3-voice chord riffs across 3 dedicated channels with inner-voice octave drops**: Instead of writing static `[A4 C5 E5]` block chords on one track, assign the top, middle, and bottom voices of a brass or string hook to three separate tracks (`ch01`/`ch02` top brass, `ch03` mid electric piano, `ch04` low brass) and animate the bottom voice with `:16` octave drops (`A4:8 A3:16` and `B4:8 G3:16`):
@@ -217,7 +256,7 @@ Give each composition its own rhythmic signature instead of reusing one rhythm e
    # Lower brass voice (FM5): adds rhythmic bounce by dropping A4->A3 and B4->G3 on the 3rd sixteenth of each stab
    (R:8 A4:8.*2 A4:8 A3:16 A4:8 A3:16 A3:8 G3 G4:8.*2 B4 B4:8 G3:16 B4:8 |)*9
    ```
-2. **Never hijack riff channels when the counter-melody enters**: When a high counter-melody enters in the second half of a groove (such as *Bare Knuckle* `Bars 25–32`: `(A5:2 F5:4 C5 | D5:2. G5:4 | A5:2 F5:4 C5 | B4:1 |)*2`), keep the 3-voice brass riff playing continuously on `ch01–ch04` while the high lead (`ch05`), its `1/8` delay echo (`ch06`), bell double (`ch07`), and middle harmony (`ch08`: `E4:2 F4 | G4:2. F4:4`) enter on their own tracks.
+2. **Never hijack riff channels when the counter-melody enters**: When a high counter-melody enters in the second half of a groove (such as *Bare Knuckle* `Bars 25` to `32`: `(A5:2 F5:4 C5 | D5:2. G5:4 | A5:2 F5:4 C5 | B4:1 |)*2`), keep the 3-voice brass riff playing continuously on `ch01` through `ch04` while the high lead (`ch05`), its `1/8` delay echo (`ch06`), bell double (`ch07`), and middle harmony (`ch08`: `E4:2 F4 | G4:2. F4:4`) enter on their own tracks.
 3. **Delay echoes vs. tight stereo doubling**:
    - Use a `:16` or `:8` time-delayed echo (`R:16` or `R:8`, panned opposite) on **sustained, lyrical melodies** (`PSG2` -> `PSG1` in *Bare Knuckle*, or `fm_lead` -> `fm_lead_echo` in *Ground Zero*).
    - Use **zero-delay stereo doubling** (`ch01` panned `-0.18` with `gm=brass_section` + `ch02` panned `+0.24` with `gm=synth_brass_1`) on **fast syncopated chord stabs**, where a `1/16` delay would smear the stabs and collide with adjacent chord changes.
@@ -226,7 +265,7 @@ Give each composition its own rhythmic signature instead of reusing one rhythm e
 Vary the harmonic vocabulary across compositions:
 * **Aeolian / Dorian two-chord club vamp (`Am7 -> Fmaj7 | G`)**: Alternates an odd-bar `Am -> Fmaj7` progression (`E5 -> F5` over `C5` and `A4/A3`) with an even-bar `G` major triad (`D5 -> G5` over `B4/D5` and `G4/B4`), resolving at the end of the 20-bar section to a full-bar `G` major cadence (`G4 / D5 / B3`).
 * **Major tonic with borrowed parallel minor chords (*Modal Mixture*)**: Opens on a bright `C` Major triad (`E5:2 C5:8. G4 E5:8`) and steps down through chords borrowed from `C` natural minor (`Bb` major, `Ab` major, `Fm`) before resolving through a 2-bar `Gsus4 -> G` suspension.
-* **Neoclassical minor with phrygian/harmonic minor cadences**: Pairs driving `Em` or `Am` riffs with `F` major (`bII` Neapolitan/Phrygian color), `Dm`, and `E7` dominant turnarounds (*Elemental Master*).
+* **Neoclassical minor with Phrygian and harmonic minor cadences**: Pairs driving `Em` or `Am` riffs with `F` major (`bII` Neapolitan/Phrygian color), `Dm`, and `E7` dominant turnarounds (*Elemental Master*).
 
 ### 3.6 Drum architecture, silence, and phrase-boundary fills
 * **Never create a drum channel that only hits cymbals/plates on every beat**: Every percussion voice must play a purposeful groove or fill.
@@ -261,7 +300,7 @@ Vary the harmonic vocabulary across compositions:
 
 ---
 
-## 4. CLI checker, player, and WAV exporter (`scripts/play.go`)
+## 4. CLI validator, player, diagnostics, and WAV exporter (`scripts/play.go`)
 
 Always run `validate` on every `.music` score before exporting or playing it:
 
@@ -273,25 +312,35 @@ go run ./scripts validate shinobi2_stage2.music
 go run ./scripts validate elemental_master_stage1.music
 go run ./scripts validate ground_zero.music
 
-# 2. Export to WAV using Default Non-Apple (YM2612/PSG) or Apple Real Instruments (-apple)
+# Validate shorter one-off fanfares or stingers with custom thresholds
+go run ./scripts validate -min-channels 6 -min-duration 6 victory_fanfare.music
+
+# 2. Emit a single-line JSON acoustic/theory report, optional WAV, and packed per-track stems
+go run ./scripts synth-json -out bare_knuckle.wav -stems bare_knuckle.stems bare_knuckle_intro.music
+go run ./scripts synth-json -apple -solo ch01,ch02 bare_knuckle_intro.music
+
+# 3. Inspect the JSON catalog of waveforms, YM2612 presets, classical tempo markings, and curated scores
+go run ./scripts presets-json
+
+# 4. Export to WAV using Default Non-Apple (YM2612/PSG) or Apple Real Instruments (-apple)
 go run ./scripts export bare_knuckle_intro.music bare_knuckle_intro.wav
 go run ./scripts export -apple bare_knuckle_intro.music bare_knuckle_intro_apple.wav
 
-# 3. Play a .music DSL score with either synthesis option
+# 5. Play a .music DSL score (one-off or -loop) with either synthesis engine
 go run ./scripts play bare_knuckle_intro.music
-go run ./scripts play -apple bare_knuckle_intro.music
+go run ./scripts play -loop -apple bare_knuckle_intro.music
 ```
 
 ---
 
 ## 5. Quality checklist for original compositions
 
-1. **Design a bespoke musical identity first**: Before writing notes, choose the song's tempo (`70–175 BPM`), mode, macro-form (through-composed evolution, asymmetric loop with drum break, ostinato-framed action loop, or multi-cycle ballad), and instrument palette. Never copy another song's instrument list or rhythmic grid verbatim.
-2. **Require 8–12+ independent channels and `30s–150s+` duration**: Dedicate separate tracks to riff voices, primary lead, delay echo, counter-melody/harmony, arpeggios, bass, sub-bass, and drums so sections build by stacking independent layers rather than hijacking channels.
+1. **Design a bespoke musical identity first**: Before writing notes, choose the song's tempo (`70` to `175 BPM`), mode, macro-form (through-composed evolution, asymmetric loop with drum break, ostinato-framed action loop, or multi-cycle ballad), and instrument palette. Never copy another song's instrument list or rhythmic grid verbatim.
+2. **Require 8 to 12+ independent channels and `30s` to `150s+` duration for full BGM**: Dedicate separate tracks to riff voices, primary lead, delay echo, counter-melody/harmony, arpeggios, bass, sub-bass, and drums so sections build by stacking independent layers rather than hijacking channels.
 3. **Enforce cross-bar continuity, explicit stab re-attacks, and verified `|` barlines**: Hold sustained notes across barlines using `~` ties (`C3:1~1`, `D5:1~1~4t`) or cross-bar ties (`F5:8~ | :16`), write explicit re-attacks and release gaps (`R:16`) for syncopated chord stabs (`:8.*2`), fold repeated phrases with `(...)*N` and `(...):dur`, and place `|` barlines to verify measure alignment.
-4. **Anchor `C1–C2` sub-bass and keep 50%–75% of energy below `260 Hz`**: Pair `ym2612_bass` / `ym2612_slap_bass` with an octave-lower `sub_bass` in `C1–C2`, omit 3rds in fast mid-range `:16` arpeggios, and never add stationary noise or ghost cymbal-only drum tracks.
+4. **Anchor `C1` to `C2` sub-bass and keep 50% to 75% of energy below `260 Hz`**: Pair `ym2612_bass` / `ym2612_slap_bass` with an octave-lower `sub_bass` in `C1` to `C2`, omit 3rds in fast mid-range `:16` arpeggios, and never add stationary noise or ghost cymbal-only drum tracks.
 5. **Pass `ValidateProductionBGM` (`go run ./scripts validate`) with pure diatonic/modal voice-leading**: Every `.music` file must pass validation with zero timing drift, aligned `|` barlines, zero melodic pitch-sweep sirens, zero continuous noise on melodic patches, and zero minor-2nd (`m2`), flat-9th (`b9`), or `G` vs. `G#` clashes.
-6. **Pre-compile PCM at startup and align to 4 bytes (`&^ 3`)**: Call `CompileDSL` or `SynthesizeScore` during startup (never inside `Update()`/`Draw()`) and always mask PCM lengths and seek offsets with `&^ 3`.
+6. **Pre-compile PCM at startup and align to 4 bytes (`&^ 3`)**: Call `CompileDSL` or `SynthesizeScore` during startup (never inside `Update()` or `Draw()`) and always mask PCM lengths and seek offsets with `&^ 3`.
 
 ---
 
@@ -303,14 +352,14 @@ Adding procedural music directly to an Ebitengine game gives you tiny asset size
 
 Procedural music scores are stored as plain-text `.music` files and synthesized directly into 16-bit 44.1 kHz stereo PCM bytes in memory:
 
-- **Tiny disk footprint**: Each song is a plain-text file of roughly 5 KB to 15 KB, replacing megabytes of audio files.
-- **Pure Go portability**: Runs everywhere Ebitengine runs, including WebAssembly in the browser, macOS, Linux, and Windows, with zero Cgo dependencies.
+- **Tiny disk footprint**: Each song is a plain-text file of roughly 5 KB to 20 KB, replacing megabytes of binary audio files.
+- **Pure Go portability**: The default YM2612/PSG engine runs everywhere Ebitengine runs, including WebAssembly in the browser, macOS, Linux, and Windows, with zero Cgo dependencies.
 - **Sample-exact seamless loops**: Looping via `audio.NewInfiniteLoop` is mathematically sample-accurate, with zero padding silence or loop seams.
-- **Dynamic audio control**: Because the score is synthesized in software, you can dynamically mute stems, alter tempo, or trigger interactive variations at runtime.
+- **Dynamic audio control**: Because the score is synthesized in software, you can render isolated per-track stems (`SynthesizeScoreWithStems`), apply low-pass muffling when paused (`ApplyLowPassFilter`), or switch themes cleanly at runtime.
 
 > [!NOTE]
-> **Why procedural synthesis is preferred over MP3**:
-> The MP3 format introduces encoder priming and bit reservoir padding silence (typically 1,152 samples) at the start and end of tracks. When looped in Ebitengine, these padding samples cause an audible gap and pop on every loop cycle. In-memory procedural synthesis guarantees exact sample-frame alignment with zero gaps.
+> **Why procedural synthesis is preferred over MP3 for looping BGM**:
+> The MP3 format introduces encoder priming and bit reservoir padding silence (typically 1,152 samples) at the start and end of tracks. When looped in Ebitengine, those padding samples cause an audible gap and click on every loop cycle. In-memory `.music` synthesis guarantees exact sample-frame alignment with zero gaps.
 
 ---
 
@@ -318,10 +367,11 @@ Procedural music scores are stored as plain-text `.music` files and synthesized 
 
 #### Step 1: Add the procedural music engine package to your project
 
-Copy the engine source files from `skills/procedural-music/scripts/` into your game project at `internal/audio/procmusic/`:
-- `sound.go`: DSL parser, sound system driver, FM/PSG synthesizer, and effects pipeline.
-- `ym2612_bank.go`: YM2612 4-operator FM instrument definitions and drum algorithms.
-- `gm_instruments.go`: General MIDI patch mappings and archetype presets.
+Copy the pure-Go engine source files from `skills/procedural-music/scripts/` into your game project at `internal/audio/procmusic/`:
+- `sound.go`: DSL parser, sound system driver, FM/PSG synthesizer, and DSP filter pipeline.
+- `ym2612_bank.go`: YM2612 4-operator FM instrument definitions and exponential-decay drum algorithms.
+- `gm_instruments.go`: General MIDI patch mappings and studio archetype presets.
+- `apple_synth_darwin.go` & `apple_synth_other.go` *(optional)*: Include if you also want native macOS `-apple` CoreAudio rendering in desktop builds.
 
 Declare `package procmusic` at the top of these files.
 
@@ -335,9 +385,7 @@ package main
 import (
 	"bytes"
 	_ "embed"
-	"log"
 
-	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/audio"
 
 	"mygame/internal/audio/procmusic"
@@ -357,7 +405,7 @@ type AudioBank struct {
 }
 
 func NewAudioBank() (*AudioBank, error) {
-	// Standard Ebitengine 44.1 kHz audio context
+	// Standard Ebitengine 44.1 kHz audio context shared across BGM and SFX
 	const sampleRate = 44100
 	audioCtx := audio.NewContext(sampleRate)
 
@@ -369,7 +417,7 @@ func NewAudioBank() (*AudioBank, error) {
 
 	// Mask buffer length with &^ 3 to guarantee mandatory 4-byte frame alignment
 	alignedBattleLen := int64(len(battlePCM)) &^ 3
-	battleLoopStream := audio.NewInfiniteLoop(bytes.NewReader(battlePCM), alignedBattleLen)
+	battleLoopStream := audio.NewInfiniteLoop(bytes.NewReader(battlePCM[:alignedBattleLen]), alignedBattleLen)
 
 	battlePlayer, err := audioCtx.NewPlayer(battleLoopStream)
 	if err != nil {
@@ -382,7 +430,7 @@ func NewAudioBank() (*AudioBank, error) {
 	}
 
 	alignedDefeatLen := int64(len(defeatPCM)) &^ 3
-	defeatLoopStream := audio.NewInfiniteLoop(bytes.NewReader(defeatPCM), alignedDefeatLen)
+	defeatLoopStream := audio.NewInfiniteLoop(bytes.NewReader(defeatPCM[:alignedDefeatLen]), alignedDefeatLen)
 
 	defeatPlayer, err := audioCtx.NewPlayer(defeatLoopStream)
 	if err != nil {
@@ -412,31 +460,18 @@ func (a *AudioBank) PlayDefeatTheme() {
 
 ---
 
-### 6.3 Terminal CLI usage and rapid iteration
+### 6.3 Fast CLI iteration without Go compiler startup delay
 
-When composing and testing music scores from the command line:
-
-#### Direct playback
-```bash
-go run ./skills/procedural-music/scripts play path/to/song.music
-```
-
-#### Eliminating Go compiler startup delay
-Running `go run .` recompiles all Go files on every run, introducing a 0.6s to 1.0s delay before audio starts. To test playback with zero compiler overhead, build the CLI executable once:
+Running `go run ./scripts ...` recompiles the Go package on each invocation. When iterating rapidly on `.music` scores from the terminal, build the binary once:
 
 ```bash
 cd skills/procedural-music/scripts
 go build -o music_cli .
 
-# Instant execution:
-./music_cli play song.music
-```
-
-#### Offline WAV export
-To export uncompressed 16-bit 44.1 kHz WAV files for external auditioning or sound editors:
-
-```bash
-go run ./skills/procedural-music/scripts export song.music song.wav
+# Instant validation, playback, and WAV export:
+./music_cli validate bare_knuckle_intro.music
+./music_cli play -apple bare_knuckle_intro.music
+./music_cli export bare_knuckle_intro.music bare_knuckle_intro.wav
 ```
 
 ---
@@ -444,6 +479,6 @@ go run ./skills/procedural-music/scripts export song.music song.wav
 ### 6.4 Audio lifecycle: Volume scaling, fade transitions, and rate-limited SFX
 
 To keep audio clean during gameplay transitions:
-1. **Never re-synthesize in `Update()`**: Always pre-compile BGM buffers during game initialization or scene transitions.
-2. **Smooth track switching**: Before starting a new song, pause the previous player (`player.Pause()` or `soundSys.Stop()`). To fade between scenes, step `player.SetVolume(currentVol)` down over 30 to 60 frames.
-3. **Trigger SFX concurrently without choking**: Use `SoundSystem.PlaySFX(cueName, sfxPCM, cooldown)` to trigger polyphonic sound effects concurrently over the background music while enforcing cooldowns so rapid button presses never clip audio channels.
+1. **Never re-synthesize in `Update()`**: Always pre-compile BGM and SFX buffers during game initialization or scene transitions.
+2. **Smooth track switching**: Before starting a new song, pause and rewind the previous player (`player.Pause()`, `player.Rewind()`). To crossfade between scenes, step `player.SetVolume(currentVol)` down over 30 to 60 frames.
+3. **Trigger SFX concurrently without choking**: Share the same `audio.Context` with `procedural-sfx` and call `SoundSystem.PlaySFX(cueName, sfxPCM, cooldown)` to trigger polyphonic sound effects over the background music while enforcing cooldowns (`30ms` to `50ms`) so rapid triggers never clip audio channels.

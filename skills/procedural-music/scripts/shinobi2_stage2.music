@@ -13,6 +13,7 @@ inst psg_arp        wave=psg_arp gm=orchestral_harp
 inst psg_arp_echo   wave=psg_square gm=clavinet
 inst fm_bass        wave=ym2612_bass gm=electric_bass
 inst sub_bass       wave=sub_bass gm=slap_bass_1
+inst kick           wave=kick vol=0.19 pan=0.00
 
 pattern lead_main =
   (F5:16 C5:8 G5:16 C5:8 Ab5:16 C5:8 G5:16 C5:8 F5:16 (C5:16 G5)*2 C5:8 Ab5:16 C5:8 Bb5:16 C5:8

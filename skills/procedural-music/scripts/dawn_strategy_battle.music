@@ -16,6 +16,7 @@ inst dawn_bells    wave=ym2612_bell    gm=vibraphone        vol=0.055 pan=0.30 l
 inst sunrise_harp  wave=psg_arp        gm=orchestral_harp   vol=0.065 pan=-0.40 lpf=0.40
 inst tactical_bass wave=ym2612_bass    gm=electric_bass     vol=0.26 lpf=0.060
 inst sub_bass      wave=sub_bass       gm=synth_bass_1      vol=0.25 lpf=0.038
+inst kick          wave=kick           vol=0.19 pan=0.00
 # 8-piece drum kit (kick, snare, tom_hi, tom_mid, tom_low, hat, open_hat, crash) is pre-seeded
 
 # ============================================================================

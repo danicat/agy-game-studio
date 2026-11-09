@@ -35,6 +35,16 @@ import {
   getSynthesizedStems,
   exportSoundWav,
 } from './services/sound_service.mjs';
+import {
+  listSpriteFiles,
+  getSpritePresets,
+  inspectSpriteSheet,
+  compileSpriteDsl,
+  normalizeSpriteSheetApi,
+  getSpriteSheetPng,
+  readSpriteDslFile,
+  saveSpriteDslFile,
+} from './services/sprite_service.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -47,6 +57,38 @@ const SEND_TO_CHAT_FILENAME_REGEX = /^[a-zA-Z0-9_\-]+\.(png|jpg|jpeg|webp|gif)$/
 const MAX_JSON_BODY_BYTES = 2 * 1024 * 1024; // 2MB default
 const MAX_CHAT_BODY_BYTES = 25 * 1024 * 1024; // 25MB for annotated screenshots
 const AGENTAPI_TIMEOUT_MS = 15_000; // 15 seconds
+
+export const ALLOWED_ARTIFACT_EXTENSIONS = new Set([
+  '.music',
+  '.sfx',
+  '.wav',
+  '.sprite',
+  '.aseprite',
+  '.ase',
+  '.png',
+  '.json',
+  '.gif',
+  '.psd',
+  '.jpg',
+  '.jpeg',
+  '.webp',
+  '.svg',
+]);
+
+const SOUND_ARTIFACT_EXTENSIONS = new Set(['.music', '.sfx', '.wav']);
+const SPRITE_ARTIFACT_EXTENSIONS = new Set([
+  '.sprite',
+  '.aseprite',
+  '.ase',
+  '.png',
+  '.json',
+  '.gif',
+  '.psd',
+  '.jpg',
+  '.jpeg',
+  '.webp',
+]);
+const TEXT_FILE_EXTENSIONS = new Set(['.music', '.sfx', '.sprite', '.json', '.svg']);
 
 let activeServerPort = null;
 
@@ -61,10 +103,10 @@ export function getDefaultWorkspace() {
   if (process.env.PLAYTEST_WORKSPACE && process.env.PLAYTEST_WORKSPACE.trim()) {
     return normalizeWorkspacePath(process.env.PLAYTEST_WORKSPACE.trim());
   }
-  const cwd = process.cwd();
-  const demoDir = path.join(pluginRoot, 'examples', 'playtest-demo');
-  if (!fs.existsSync(path.join(cwd, 'go.mod')) && fs.existsSync(path.join(demoDir, 'go.mod'))) {
-    return demoDir;
+  const cwd = path.resolve(process.cwd());
+  const sidecarDir = path.join(pluginRoot, 'sidecars', 'studio');
+  if (cwd === sidecarDir) {
+    return pluginRoot;
   }
   return cwd;
 }
@@ -82,6 +124,53 @@ function hasEnclosingGoMod(startDir) {
   return false;
 }
 
+export function discoverRunnableGoPackages(dirPath) {
+  if (!dirPath || !fs.existsSync(dirPath)) return [];
+  let stat;
+  try {
+    stat = fs.statSync(dirPath);
+  } catch {
+    return [];
+  }
+  if (!stat.isDirectory()) return [];
+
+  const packages = [];
+  try {
+    const rootEntries = fs.readdirSync(dirPath, { withFileTypes: true });
+    const hasRootGo = rootEntries.some(
+      (e) => e.isFile() && e.name.endsWith('.go') && !e.name.endsWith('_test.go')
+    );
+    if (hasRootGo) {
+      packages.push('.');
+    }
+
+    for (const parentFolder of ['cmd', 'examples']) {
+      const searchDir = path.join(dirPath, parentFolder);
+      if (fs.existsSync(searchDir) && fs.statSync(searchDir).isDirectory()) {
+        const subEntries = fs
+          .readdirSync(searchDir, { withFileTypes: true })
+          .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
+          .sort((a, b) => a.name.localeCompare(b.name));
+
+        for (const sub of subEntries) {
+          const subDir = path.join(searchDir, sub.name);
+          const subFiles = fs.readdirSync(subDir, { withFileTypes: true });
+          if (
+            subFiles.some(
+              (f) => f.isFile() && f.name.endsWith('.go') && !f.name.endsWith('_test.go')
+            )
+          ) {
+            packages.push(`./${parentFolder}/${sub.name}`);
+          }
+        }
+      }
+    }
+  } catch {
+    // Ignore directory read errors during package scan
+  }
+  return packages;
+}
+
 export function resolveWorkspaceInfo(workspaceInput) {
   const resolvedPath =
     workspaceInput && typeof workspaceInput === 'string' && workspaceInput.trim()
@@ -95,14 +184,21 @@ export function resolveWorkspaceInfo(workspaceInput) {
     pkg = '.';
   }
 
-  const projectPath =
+  const packages = discoverRunnableGoPackages(resolvedPath);
+  const subPkgPath =
     pkg && pkg !== '.' ? path.resolve(resolvedPath, pkg) : resolvedPath;
   const hasGoMod =
     fs.existsSync(path.join(resolvedPath, 'go.mod')) ||
-    fs.existsSync(path.join(projectPath, 'go.mod')) ||
-    hasEnclosingGoMod(projectPath);
+    fs.existsSync(path.join(subPkgPath, 'go.mod')) ||
+    hasEnclosingGoMod(subPkgPath);
 
-  return { workspace: resolvedPath, pkg, projectPath, hasGoMod };
+  return {
+    workspace: resolvedPath,
+    pkg,
+    packages: packages.length > 0 ? packages : [pkg],
+    projectPath: resolvedPath,
+    hasGoMod,
+  };
 }
 
 // Determine Antigravity app data directory portably with fail-fast validation
@@ -285,11 +381,731 @@ const MIME_TYPES = {
   '.jpeg': 'image/jpeg',
   '.webp': 'image/webp',
   '.gif': 'image/gif',
+  '.psd': 'image/vnd.adobe.photoshop',
+  '.music': 'text/plain; charset=utf-8',
+  '.sfx': 'text/plain; charset=utf-8',
+  '.wav': 'audio/wav',
+  '.sprite': 'text/plain; charset=utf-8',
+  '.aseprite': 'application/octet-stream',
+  '.ase': 'application/octet-stream',
   '.woff': 'font/woff',
   '.woff2': 'font/woff2',
   '.ttf': 'font/ttf',
   '.ico': 'image/x-icon',
 };
+
+function parseWorkspaceUri(uri) {
+  if (typeof uri !== 'string' || !uri.trim()) return null;
+  const trimmed = uri.trim();
+  if (trimmed.startsWith('file://')) {
+    try {
+      return path.resolve(fileURLToPath(trimmed));
+    } catch {
+      return null;
+    }
+  }
+  return path.resolve(trimmed);
+}
+
+function expandTildeAndUri(rawPath) {
+  const homeDir = os.homedir();
+  const trimmed = String(rawPath || '').trim();
+  if (trimmed === '~') return homeDir;
+  if (trimmed.startsWith('~/') || trimmed.startsWith('~\\')) {
+    return path.join(homeDir, trimmed.slice(2));
+  }
+  if (trimmed.startsWith('file://')) {
+    return fileURLToPath(trimmed);
+  }
+  return trimmed;
+}
+
+function getAllowedFsRoots(workspaceUris) {
+  const homeDir = os.homedir();
+  const allowedRoots = [
+    path.resolve(homeDir),
+    path.resolve(os.tmpdir()),
+    path.resolve(process.cwd()),
+    path.resolve(getDefaultWorkspace()),
+  ];
+  try {
+    allowedRoots.push(fs.realpathSync(os.tmpdir()));
+  } catch {
+    // ignore if tmpdir realpath fails
+  }
+  if (process.env.WORKSPACE_ROOT) {
+    allowedRoots.push(path.resolve(process.env.WORKSPACE_ROOT));
+  }
+  if (process.env.PLAYTEST_WORKSPACE) {
+    allowedRoots.push(path.resolve(process.env.PLAYTEST_WORKSPACE));
+  }
+  if (process.env.ANTIGRAVITY_EXECUTABLE_DATA_DIR) {
+    allowedRoots.push(path.resolve(process.env.ANTIGRAVITY_EXECUTABLE_DATA_DIR));
+  }
+  if (Array.isArray(workspaceUris)) {
+    for (const uri of workspaceUris) {
+      const parsed = parseWorkspaceUri(uri);
+      if (parsed) allowedRoots.push(parsed);
+    }
+  }
+  try {
+    allowedRoots.push(path.resolve(getAppDataDir()));
+  } catch {
+    // ignore if appDataDir is not configured
+  }
+  return allowedRoots;
+}
+
+function isWithinAllowedRoot(candidate, workspaceUris) {
+  const allowedRoots = getAllowedFsRoots(workspaceUris);
+  return allowedRoots.some(
+    (root) => candidate === root || candidate.startsWith(root + path.sep)
+  );
+}
+
+export function validateArtifactRelativePath(relPath, { allowReadSystemGeneratedMedia = false } = {}) {
+  if (!relPath || typeof relPath !== 'string' || !relPath.trim()) {
+    throw createHttpError('Missing or empty artifact filename/path.', 400);
+  }
+  if (relPath.includes('\0')) {
+    throw createHttpError('Invalid artifact filename: null byte detected.', 400);
+  }
+  if (path.isAbsolute(relPath) || relPath.startsWith('/') || relPath.startsWith('\\')) {
+    throw createHttpError(`Invalid artifact filename "${relPath}": must be a relative path.`, 400);
+  }
+
+  const normalized = relPath.replace(/\\/g, '/');
+  const segments = normalized.split('/');
+  if (relPath.includes('..') || segments.some((seg) => seg === '..' || seg === '.')) {
+    throw createHttpError(
+      `Access denied: path traversal sequence ".." is not allowed in "${relPath}".`,
+      400
+    );
+  }
+
+  if (!allowReadSystemGeneratedMedia) {
+    if (
+      normalized === '.system_generated' ||
+      normalized.startsWith('.system_generated/') ||
+      segments.includes('.system_generated')
+    ) {
+      throw createHttpError(
+        `Access denied: writing into ".system_generated" is forbidden ("${relPath}").`,
+        400
+      );
+    }
+  } else if (
+    normalized === '.system_generated' ||
+    normalized.startsWith('.system_generated/logs') ||
+    normalized.startsWith('.system_generated/messages')
+  ) {
+    throw createHttpError(
+      `Access denied: access to internal logs or messages in ".system_generated" is forbidden ("${relPath}").`,
+      400
+    );
+  }
+
+  const ext = path.extname(relPath).toLowerCase();
+  if (!ALLOWED_ARTIFACT_EXTENSIONS.has(ext)) {
+    throw createHttpError(
+      `Unsupported file extension "${ext}" for "${relPath}". Allowed extensions: ${Array.from(ALLOWED_ARTIFACT_EXTENSIONS).join(', ')}.`,
+      400
+    );
+  }
+
+  return { normalized, ext };
+}
+
+export function scanConversationMedia(sessionDir, filter = 'all') {
+  if (!fs.existsSync(sessionDir)) {
+    return [];
+  }
+  const realSessionDir = fs.realpathSync(sessionDir);
+  const results = [];
+  const normalizedFilter = String(filter || 'all').toLowerCase();
+  const allowedSet =
+    normalizedFilter === 'sound'
+      ? SOUND_ARTIFACT_EXTENSIONS
+      : normalizedFilter === 'sprite'
+      ? SPRITE_ARTIFACT_EXTENSIONS
+      : ALLOWED_ARTIFACT_EXTENSIONS;
+
+  function walk(currentDir, relPrefix = '', source = 'Artifact') {
+    const entries = fs.readdirSync(currentDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (
+        entry.name === 'node_modules' ||
+        entry.name === '.git' ||
+        (relPrefix === '.system_generated' &&
+          (entry.name === 'logs' || entry.name === 'messages'))
+      ) {
+        continue;
+      }
+      const fullPath = path.join(currentDir, entry.name);
+      const relPath = relPrefix ? `${relPrefix}/${entry.name}` : entry.name;
+
+      let realEntryPath;
+      try {
+        realEntryPath = fs.realpathSync(fullPath);
+      } catch (err) {
+        console.warn(`[game-dev-studio] Skipping unresolvable entry "${fullPath}": ${err.message}`);
+        continue;
+      }
+
+      if (
+        realEntryPath !== realSessionDir &&
+        !realEntryPath.startsWith(realSessionDir + path.sep)
+      ) {
+        console.warn(`[game-dev-studio] Skipping symlink outside session directory: "${fullPath}"`);
+        continue;
+      }
+
+      const stat = fs.statSync(realEntryPath);
+      if (stat.isDirectory()) {
+        if (entry.name === '.user_uploaded') {
+          walk(fullPath, relPath, 'User Upload');
+        } else if (entry.name === '.tempmediaStorage') {
+          walk(fullPath, relPath, 'Temp Media');
+        } else if (entry.name === '.system_generated') {
+          walk(fullPath, relPath, 'Step Media');
+        } else if (!entry.name.startsWith('.')) {
+          walk(fullPath, relPath, source);
+        }
+      } else if (stat.isFile()) {
+        const ext = path.extname(entry.name).toLowerCase();
+        if (allowedSet.has(ext)) {
+          results.push({
+            filename: relPath,
+            relativePath: relPath,
+            name: entry.name,
+            displayName: entry.name,
+            source,
+            size: stat.size,
+            modifiedTime: stat.mtimeMs,
+            ext,
+          });
+        }
+      }
+    }
+  }
+
+  walk(sessionDir);
+  return results.sort((a, b) => b.modifiedTime - a.modifiedTime);
+}
+
+export function handleGetArtifacts(data = {}) {
+  const sessionId = data.session_id || data.sessionId || getActiveSessionId() || 'standalone';
+  const sessionDir = resolveSessionBrainDir(sessionId);
+  const filter = data.filter || 'all';
+  const media = scanConversationMedia(sessionDir, filter);
+  return { artifacts: media, media };
+}
+
+export function handleGetArtifact(data = {}) {
+  const sessionId = data.session_id || data.sessionId || getActiveSessionId() || 'standalone';
+  const filename = data.filename || data.path;
+  const sessionDir = resolveSessionBrainDir(sessionId);
+  const { ext } = validateArtifactRelativePath(filename, {
+    allowReadSystemGeneratedMedia: true,
+  });
+
+  const targetPath = path.resolve(sessionDir, filename);
+  const realSessionDir = fs.realpathSync(sessionDir);
+
+  if (targetPath !== sessionDir && !targetPath.startsWith(sessionDir + path.sep)) {
+    throw createHttpError(
+      'Access denied: path traversal attempt outside session directory.',
+      400
+    );
+  }
+
+  const lstat = fs.lstatSync(targetPath, { throwIfNoEntry: false });
+  if (!lstat) {
+    throw createHttpError(`Artifact file not found: "${filename}"`, 404);
+  }
+
+  let realTargetPath;
+  try {
+    realTargetPath = fs.realpathSync(targetPath);
+  } catch (err) {
+    throw createHttpError(
+      `Access denied: unable to resolve real path for "${filename}": ${err.message}`,
+      400
+    );
+  }
+
+  if (!realTargetPath.startsWith(realSessionDir + path.sep)) {
+    throw createHttpError(
+      'Access denied: resolved artifact path escapes session directory.',
+      400
+    );
+  }
+
+  const stat = fs.statSync(realTargetPath);
+  if (!stat.isFile()) {
+    throw createHttpError(`Artifact path is not a regular file: "${filename}"`, 400);
+  }
+
+  const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+  const headers = {
+    'Cache-Control': 'no-cache',
+    'X-Content-Type-Options': 'nosniff',
+  };
+  if (ext === '.svg') {
+    headers['Content-Security-Policy'] = "default-src 'none'; sandbox";
+  }
+
+  const fileData = fs.readFileSync(realTargetPath);
+  return {
+    filename,
+    ext,
+    contentType,
+    headers,
+    fileData,
+    isText: TEXT_FILE_EXTENSIONS.has(ext),
+  };
+}
+
+export function handlePostArtifact(data = {}) {
+  const sessionId = data.session_id || data.sessionId || getActiveSessionId() || 'standalone';
+  const filename = data.filename || data.path;
+  const textPayload = data.text;
+  const payload = data.data ?? data.image ?? data.content;
+
+  const sessionDir = resolveSessionBrainDir(sessionId);
+  validateArtifactRelativePath(filename);
+
+  const hasText = typeof textPayload === 'string';
+  const hasBase64 = typeof payload === 'string' && payload.trim().length > 0;
+  if (!hasText && !hasBase64) {
+    throw createHttpError(
+      'Missing or invalid "data" or "text" in save artifact request.',
+      400
+    );
+  }
+
+  const targetPath = path.resolve(sessionDir, filename);
+  if (targetPath !== sessionDir && !targetPath.startsWith(sessionDir + path.sep)) {
+    throw createHttpError(
+      'Access denied: path traversal attempt outside session directory.',
+      400
+    );
+  }
+
+  const realSessionDir = fs.realpathSync(sessionDir);
+  const targetDir = path.dirname(targetPath);
+
+  let existingAncestor = targetDir;
+  while (!fs.existsSync(existingAncestor)) {
+    const parent = path.dirname(existingAncestor);
+    if (parent === existingAncestor) break;
+    existingAncestor = parent;
+  }
+  const realAncestor = fs.realpathSync(existingAncestor);
+  if (
+    realAncestor !== realSessionDir &&
+    !realAncestor.startsWith(realSessionDir + path.sep)
+  ) {
+    throw createHttpError(
+      'Access denied: target ancestor directory escapes session directory.',
+      400
+    );
+  }
+
+  if (!fs.existsSync(targetDir)) {
+    fs.mkdirSync(targetDir, { recursive: true });
+  }
+
+  const realParentDir = fs.realpathSync(targetDir);
+  if (
+    realParentDir !== realSessionDir &&
+    !realParentDir.startsWith(realSessionDir + path.sep)
+  ) {
+    throw createHttpError(
+      'Access denied: target parent directory escapes session directory.',
+      400
+    );
+  }
+
+  const existingLstat = fs.lstatSync(targetPath, { throwIfNoEntry: false });
+  if (existingLstat) {
+    let realExisting;
+    try {
+      realExisting = fs.realpathSync(targetPath);
+    } catch (err) {
+      throw createHttpError(
+        `Access denied: invalid existing symlink at "${filename}": ${err.message}`,
+        400
+      );
+    }
+    if (!realExisting.startsWith(realSessionDir + path.sep)) {
+      throw createHttpError(
+        'Access denied: target file symlink points outside session directory.',
+        400
+      );
+    }
+  }
+
+  let buffer;
+  if (hasText) {
+    buffer = Buffer.from(textPayload, 'utf-8');
+  } else {
+    const rawBase64 = payload.includes(',') ? payload.split(',')[1] : payload;
+    buffer = Buffer.from(rawBase64, 'base64');
+  }
+  fs.writeFileSync(targetPath, buffer);
+
+  return { success: true, filename, path: targetPath, size: buffer.length };
+}
+
+export function handleGetFsInfo(data = {}) {
+  const homeDir = os.homedir();
+  const downloadsDir = path.join(homeDir, 'Downloads');
+  const desktopDir = path.join(homeDir, 'Desktop');
+
+  const hostWorkspaceDir = parseWorkspaceUri(
+    data.workspace_uri || data.workspaceUri || data.workspace
+  );
+  const workspaceDir = hostWorkspaceDir || getDefaultWorkspace();
+
+  const sessionId = data.session_id || data.sessionId || getActiveSessionId();
+  let sessionDir = null;
+  if (sessionId && SESSION_ID_REGEX.test(sessionId)) {
+    try {
+      sessionDir = resolveSessionBrainDir(sessionId);
+    } catch {
+      sessionDir = null;
+    }
+  }
+
+  const defaultDir =
+    workspaceDir && fs.existsSync(workspaceDir)
+      ? workspaceDir
+      : fs.existsSync(downloadsDir)
+      ? downloadsDir
+      : homeDir;
+
+  return {
+    defaultDir,
+    downloadsDir,
+    desktopDir,
+    homeDir,
+    workspaceDir,
+    sessionDir,
+  };
+}
+
+export function handleGetFsList(data = {}) {
+  const rawDir = data.dir || data.directory || data.path || getDefaultWorkspace();
+  if (typeof rawDir !== 'string' || !rawDir.trim()) {
+    throw createHttpError('Missing or empty "dir" query parameter.', 400);
+  }
+  if (rawDir.includes('\0')) {
+    throw createHttpError('Invalid directory path: null byte detected.', 400);
+  }
+
+  const targetDir = path.resolve(expandTildeAndUri(rawDir));
+  if (!isWithinAllowedRoot(targetDir)) {
+    throw createHttpError(
+      `Access denied: directory "${targetDir}" must be within your home, workspace, or temp directory.`,
+      403
+    );
+  }
+
+  if (!fs.existsSync(targetDir)) {
+    throw createHttpError(`Directory not found: "${targetDir}"`, 404);
+  }
+
+  const realDir = fs.realpathSync(targetDir);
+  if (!isWithinAllowedRoot(realDir)) {
+    throw createHttpError(
+      `Access denied: resolved directory "${realDir}" is outside allowed user directories.`,
+      403
+    );
+  }
+
+  const dirStat = fs.statSync(realDir);
+  if (!dirStat.isDirectory()) {
+    throw createHttpError(`Path is not a directory: "${targetDir}"`, 400);
+  }
+
+  const filter = String(data.filter || 'all').toLowerCase();
+  let allowedExts;
+  if (typeof data.extensions === 'string' && data.extensions.trim()) {
+    allowedExts = new Set(
+      data.extensions
+        .split(',')
+        .map((e) => e.trim().toLowerCase())
+        .filter(Boolean)
+        .map((e) => (e.startsWith('.') ? e : `.${e}`))
+    );
+  } else if (filter === 'sound') {
+    allowedExts = new Set(['.music', '.sfx']);
+  } else if (filter === 'sprite') {
+    allowedExts = new Set(['.sprite', '.aseprite', '.ase']);
+  } else if (filter === 'project') {
+    allowedExts = new Set();
+  } else {
+    allowedExts = ALLOWED_ARTIFACT_EXTENSIONS;
+  }
+
+  const entries = fs.readdirSync(realDir, { withFileTypes: true });
+  const directories = [];
+  const files = [];
+
+  for (const entry of entries) {
+    if (entry.name.startsWith('.') || entry.name === 'node_modules') {
+      continue;
+    }
+    const fullPath = path.join(realDir, entry.name);
+    let realEntryPath;
+    let stat;
+    try {
+      realEntryPath = fs.realpathSync(fullPath);
+      if (!isWithinAllowedRoot(realEntryPath)) continue;
+      stat = fs.statSync(realEntryPath);
+    } catch {
+      continue;
+    }
+
+    if (stat.isDirectory()) {
+      directories.push({
+        name: entry.name,
+        path: fullPath,
+        type: 'directory',
+        hasGoMod: fs.existsSync(path.join(fullPath, 'go.mod')),
+      });
+    } else if (stat.isFile()) {
+      const ext = path.extname(entry.name).toLowerCase();
+      if (allowedExts.has(ext)) {
+        files.push({
+          name: entry.name,
+          path: fullPath,
+          filePath: fullPath,
+          ext,
+          type: ext.slice(1),
+          size: stat.size,
+          modifiedTime: stat.mtimeMs,
+        });
+      }
+    }
+  }
+
+  directories.sort((a, b) => a.name.localeCompare(b.name));
+  files.sort((a, b) => a.name.localeCompare(b.name));
+
+  const packages = discoverRunnableGoPackages(realDir);
+  const hasGoMod =
+    fs.existsSync(path.join(realDir, 'go.mod')) ||
+    hasEnclosingGoMod(realDir) ||
+    packages.length > 0;
+  const defaultPkg = packages.length > 0 ? packages[0] : '.';
+  const parentCandidate = path.dirname(realDir);
+  const parentDir =
+    parentCandidate !== realDir && isWithinAllowedRoot(parentCandidate)
+      ? parentCandidate
+      : null;
+
+  return {
+    dir: realDir,
+    parentDir,
+    filter,
+    directories,
+    files,
+    hasGoMod,
+    packages: packages.length > 0 ? packages : ['.'],
+    defaultPkg,
+  };
+}
+
+export function handlePostFsSave(data = {}) {
+  const { directory, filename, filePath, workspaceUris } = data;
+  const textPayload = data.text;
+  const payload = data.data ?? data.image ?? data.content;
+
+  const hasText = typeof textPayload === 'string';
+  const hasBase64 = typeof payload === 'string' && payload.trim().length > 0;
+  if (!hasText && !hasBase64) {
+    throw createHttpError(
+      'Missing or invalid "data" or "text" in filesystem save request.',
+      400
+    );
+  }
+
+  let targetPath;
+  if (
+    typeof directory === 'string' &&
+    directory.trim() &&
+    typeof filename === 'string' &&
+    filename.trim()
+  ) {
+    if (
+      filename.includes('\0') ||
+      filename.includes('/') ||
+      filename.includes('\\') ||
+      filename === '.' ||
+      filename === '..'
+    ) {
+      throw createHttpError(
+        `Invalid filename "${filename}": must be a single file name without directory separators.`,
+        400
+      );
+    }
+    if (directory.includes('\0')) {
+      throw createHttpError('Invalid directory path: null byte detected.', 400);
+    }
+    const resolvedDir = path.resolve(expandTildeAndUri(directory));
+    targetPath = path.join(resolvedDir, filename.trim());
+  } else if (typeof filePath === 'string' && filePath.trim()) {
+    if (filePath.includes('\0')) {
+      throw createHttpError('Invalid filePath: null byte detected.', 400);
+    }
+    targetPath = path.resolve(expandTildeAndUri(filePath));
+  } else {
+    throw createHttpError(
+      'Missing target location: provide either ("directory" and "filename") or "filePath".',
+      400
+    );
+  }
+
+  const ext = path.extname(targetPath).toLowerCase();
+  if (!ALLOWED_ARTIFACT_EXTENSIONS.has(ext)) {
+    throw createHttpError(
+      `Unsupported file extension "${ext}". Allowed extensions: ${Array.from(ALLOWED_ARTIFACT_EXTENSIONS).join(', ')}.`,
+      400
+    );
+  }
+
+  const normalizedSegments = targetPath.split(path.sep);
+  if (normalizedSegments.includes('.system_generated')) {
+    throw createHttpError(
+      'Access denied: writing into ".system_generated" is forbidden.',
+      400
+    );
+  }
+
+  if (!isWithinAllowedRoot(targetPath, workspaceUris)) {
+    throw createHttpError(
+      `Access denied: target path "${targetPath}" must be within your home, workspace, or temp directory.`,
+      403
+    );
+  }
+
+  const targetDir = path.dirname(targetPath);
+  if (!fs.existsSync(targetDir)) {
+    fs.mkdirSync(targetDir, { recursive: true });
+  }
+
+  const realTargetDir = fs.realpathSync(targetDir);
+  if (!isWithinAllowedRoot(realTargetDir, workspaceUris)) {
+    throw createHttpError(
+      `Access denied: resolved target directory "${realTargetDir}" is outside allowed user directories.`,
+      403
+    );
+  }
+
+  const existingLstat = fs.lstatSync(targetPath, { throwIfNoEntry: false });
+  if (existingLstat) {
+    let realExisting;
+    try {
+      realExisting = fs.realpathSync(targetPath);
+    } catch (err) {
+      throw createHttpError(
+        `Access denied: invalid existing symlink at "${targetPath}": ${err.message}`,
+        400
+      );
+    }
+    if (!isWithinAllowedRoot(realExisting, workspaceUris)) {
+      throw createHttpError(
+        'Access denied: target file symlink points outside allowed user directories.',
+        403
+      );
+    }
+  }
+
+  let buffer;
+  if (hasText) {
+    buffer = Buffer.from(textPayload, 'utf-8');
+  } else {
+    const rawBase64 = payload.includes(',') ? payload.split(',')[1] : payload;
+    buffer = Buffer.from(rawBase64, 'base64');
+  }
+  fs.writeFileSync(targetPath, buffer);
+
+  return {
+    success: true,
+    filename: path.basename(targetPath),
+    path: targetPath,
+    size: buffer.length,
+  };
+}
+
+export function handleGetFsOpen(data = {}) {
+  const rawFile = data.file || data.filePath || data.path;
+  if (!rawFile || typeof rawFile !== 'string' || !rawFile.trim()) {
+    throw createHttpError('Missing or empty "file" query parameter.', 400);
+  }
+  if (rawFile.includes('\0')) {
+    throw createHttpError('Invalid file path: null byte detected.', 400);
+  }
+
+  const targetPath = path.resolve(expandTildeAndUri(rawFile));
+  const ext = path.extname(targetPath).toLowerCase();
+  if (!ALLOWED_ARTIFACT_EXTENSIONS.has(ext)) {
+    throw createHttpError(
+      `Unsupported file extension "${ext}". Allowed extensions: ${Array.from(ALLOWED_ARTIFACT_EXTENSIONS).join(', ')}.`,
+      400
+    );
+  }
+
+  const normalizedSegments = targetPath.split(path.sep);
+  const sysGenIdx = normalizedSegments.indexOf('.system_generated');
+  if (
+    sysGenIdx !== -1 &&
+    (normalizedSegments[sysGenIdx + 1] === 'logs' ||
+      normalizedSegments[sysGenIdx + 1] === 'messages')
+  ) {
+    throw createHttpError(
+      'Access denied: reading internal logs or messages from ".system_generated" is forbidden.',
+      400
+    );
+  }
+
+  if (!isWithinAllowedRoot(targetPath)) {
+    throw createHttpError(
+      `Access denied: file path "${targetPath}" must be within your home, workspace, or temp directory.`,
+      403
+    );
+  }
+
+  if (!fs.existsSync(targetPath)) {
+    throw createHttpError(`File not found: "${targetPath}"`, 404);
+  }
+
+  const realTargetPath = fs.realpathSync(targetPath);
+  if (!isWithinAllowedRoot(realTargetPath)) {
+    throw createHttpError(
+      `Access denied: resolved file path "${realTargetPath}" is outside allowed user directories.`,
+      403
+    );
+  }
+
+  const stat = fs.statSync(realTargetPath);
+  if (!stat.isFile()) {
+    throw createHttpError(`Path is not a regular file: "${targetPath}"`, 400);
+  }
+
+  const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+  const fileData = fs.readFileSync(realTargetPath);
+  return {
+    path: realTargetPath,
+    fileName: path.basename(realTargetPath),
+    ext,
+    contentType,
+    fileData,
+    isText: TEXT_FILE_EXTENSIONS.has(ext),
+  };
+}
 
 // Parse JSON request body with strict byte-limit enforcement before buffering
 export function parseJsonBody(req, maxBytes = MAX_JSON_BODY_BYTES) {
@@ -1145,6 +1961,7 @@ export function configureSidecarApp(app, ResponseClass) {
   app.page('/index.html', serveIndexPage);
   app.page('/playtest', serveIndexPage);
   app.page('/sound', serveIndexPage);
+  app.page('/sprite', serveIndexPage);
   app.page(
     '/app.js',
     () =>
@@ -1353,6 +2170,160 @@ export function configureSidecarApp(app, ResponseClass) {
       })
     ),
     'POST'
+  );
+
+  // Sprite Studio APIs (.sprite DSL compilation, .png/.json sprite sheet inspection, and AI grid normalization)
+  app.api(
+    '/api/sprite/files',
+    wrapApi((data) => listSpriteFiles({ workspace: data.workspace })),
+    'GET'
+  );
+  app.api(
+    '/api/sprite/presets',
+    wrapApi(() => getSpritePresets()),
+    'GET'
+  );
+  app.api(
+    '/api/sprite/inspect',
+    wrapApi((data) =>
+      inspectSpriteSheet({
+        filePath: data.filePath,
+        frameWidth: data.frameWidth,
+        frameHeight: data.frameHeight,
+        cols: data.cols,
+        rows: data.rows,
+      })
+    ),
+    'POST'
+  );
+  app.api(
+    '/api/sprite/compile',
+    wrapApi((data) =>
+      compileSpriteDsl({
+        dsl: data.dsl,
+        preset: data.preset,
+        filePath: data.filePath,
+      })
+    ),
+    'POST'
+  );
+  app.api(
+    '/api/sprite/normalize',
+    wrapApi((data) =>
+      normalizeSpriteSheetApi({
+        filePath: data.filePath,
+        filePaths: data.filePaths,
+        frameWidth: data.frameWidth,
+        frameHeight: data.frameHeight,
+        cols: data.cols,
+        rows: data.rows,
+        center: data.center !== false,
+        ground: data.ground !== false,
+        pad: data.pad,
+        tolerance: data.tolerance,
+        tags: data.tags,
+        outputPath: data.outputPath,
+      })
+    ),
+    'POST'
+  );
+  app.api(
+    '/api/sprite/png',
+    wrapApi((data) => {
+      const pngBuf = getSpriteSheetPng(data.sheetId, data.filePath);
+      return new ResponseClass(pngBuf, {
+        contentType: 'image/png',
+        headers: {
+          'Cache-Control': 'no-store',
+        },
+      });
+    }),
+    'GET'
+  );
+  app.api(
+    '/api/sprite/file/read',
+    wrapApi((data) => readSpriteDslFile({ filePath: data.filePath })),
+    'POST'
+  );
+  app.api(
+    '/api/sprite/file/save',
+    wrapApi((data) => saveSpriteDslFile({ filePath: data.filePath, content: data.content })),
+    'POST'
+  );
+
+  // Standardized Session Artifacts & Filesystem APIs
+  app.api(
+    '/api/artifacts',
+    wrapApi((data) => handleGetArtifacts(data)),
+    'GET'
+  );
+  app.api(
+    '/api/artifact',
+    wrapApi((data) => {
+      const res = handleGetArtifact(data);
+      if (data.format === 'json') {
+        return {
+          filename: res.filename,
+          ext: res.ext,
+          size: res.fileData.length,
+          text: res.isText ? res.fileData.toString('utf-8') : undefined,
+          base64: res.fileData.toString('base64'),
+        };
+      }
+      return new ResponseClass(res.fileData, {
+        contentType: res.contentType,
+        status: 200,
+        headers: res.headers,
+      });
+    }),
+    'GET'
+  );
+  app.api(
+    '/api/artifact',
+    wrapApi((data) => handlePostArtifact(data)),
+    'POST'
+  );
+  app.api(
+    '/api/fs/info',
+    wrapApi((data) => handleGetFsInfo(data)),
+    'GET'
+  );
+  app.api(
+    '/api/fs/list',
+    wrapApi((data) => handleGetFsList(data)),
+    'GET'
+  );
+  app.api(
+    '/api/fs/save',
+    wrapApi((data) => handlePostFsSave(data)),
+    'POST'
+  );
+  app.api(
+    '/api/fs/open',
+    wrapApi((data) => {
+      const res = handleGetFsOpen(data);
+      if (data.format === 'json') {
+        return {
+          path: res.path,
+          filePath: res.path,
+          fileName: res.fileName,
+          filename: res.fileName,
+          ext: res.ext,
+          size: res.fileData.length,
+          text: res.isText ? res.fileData.toString('utf-8') : undefined,
+          base64: res.fileData.toString('base64'),
+        };
+      }
+      return new ResponseClass(res.fileData, {
+        contentType: res.contentType,
+        status: 200,
+        headers: {
+          'Cache-Control': 'no-cache',
+          'X-Content-Type-Options': 'nosniff',
+        },
+      });
+    }),
+    'GET'
   );
 
   return app;
@@ -1667,12 +2638,202 @@ export async function handleRequest(req, res) {
       return;
     }
 
+    if (pathname === '/api/sprite/files' && req.method === 'GET') {
+      const workspace = searchParams.get('workspace') || undefined;
+      const result = await listSpriteFiles({ workspace });
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify(result));
+      return;
+    }
+
+    if (pathname === '/api/sprite/presets' && req.method === 'GET') {
+      const result = await getSpritePresets();
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify(result));
+      return;
+    }
+
+    if (pathname === '/api/sprite/inspect' && req.method === 'POST') {
+      const body = await parseJsonBody(req);
+      const result = await inspectSpriteSheet({
+        filePath: body.filePath,
+        frameWidth: body.frameWidth,
+        frameHeight: body.frameHeight,
+        cols: body.cols,
+        rows: body.rows,
+      });
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify(result));
+      return;
+    }
+
+    if (pathname === '/api/sprite/compile' && req.method === 'POST') {
+      const body = await parseJsonBody(req);
+      const result = await compileSpriteDsl({
+        dsl: body.dsl,
+        preset: body.preset,
+        filePath: body.filePath,
+      });
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify(result));
+      return;
+    }
+
+    if (pathname === '/api/sprite/normalize' && req.method === 'POST') {
+      const body = await parseJsonBody(req);
+      const result = await normalizeSpriteSheetApi({
+        filePath: body.filePath,
+        filePaths: body.filePaths,
+        frameWidth: body.frameWidth,
+        frameHeight: body.frameHeight,
+        cols: body.cols,
+        rows: body.rows,
+        center: body.center !== false,
+        ground: body.ground !== false,
+        pad: body.pad,
+        tolerance: body.tolerance,
+        tags: body.tags,
+        outputPath: body.outputPath,
+      });
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify(result));
+      return;
+    }
+
+    if (pathname === '/api/sprite/png' && (req.method === 'GET' || req.method === 'HEAD')) {
+      const sheetId = searchParams.get('sheetId') || undefined;
+      const filePath = searchParams.get('filePath') || undefined;
+      const pngBuf = getSpriteSheetPng(sheetId, filePath);
+      res.writeHead(200, {
+        'Content-Type': 'image/png',
+        'Content-Length': pngBuf.length,
+        'Cache-Control': 'no-store',
+      });
+      if (req.method === 'HEAD') {
+        res.end();
+        return;
+      }
+      res.end(pngBuf);
+      return;
+    }
+
+    if (pathname === '/api/sprite/file/read' && req.method === 'POST') {
+      const body = await parseJsonBody(req);
+      const result = await readSpriteDslFile({ filePath: body.filePath });
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify(result));
+      return;
+    }
+
+    if (pathname === '/api/sprite/file/save' && req.method === 'POST') {
+      const body = await parseJsonBody(req);
+      const result = await saveSpriteDslFile({ filePath: body.filePath, content: body.content });
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify(result));
+      return;
+    }
+
+    if (pathname === '/api/artifacts' && req.method === 'GET') {
+      const queryObj = Object.fromEntries(searchParams.entries());
+      const result = handleGetArtifacts(queryObj);
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify(result));
+      return;
+    }
+
+    if (pathname === '/api/artifact' && req.method === 'GET') {
+      const queryObj = Object.fromEntries(searchParams.entries());
+      const result = handleGetArtifact(queryObj);
+      if (queryObj.format === 'json') {
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(
+          JSON.stringify({
+            filename: result.filename,
+            ext: result.ext,
+            size: result.fileData.length,
+            text: result.isText ? result.fileData.toString('utf-8') : undefined,
+            base64: result.fileData.toString('base64'),
+          })
+        );
+        return;
+      }
+      res.writeHead(200, {
+        ...result.headers,
+        'Content-Type': result.contentType,
+        'Content-Length': result.fileData.length,
+      });
+      res.end(result.fileData);
+      return;
+    }
+
+    if (pathname === '/api/artifact' && req.method === 'POST') {
+      const body = await parseJsonBody(req, MAX_CHAT_BODY_BYTES);
+      const result = handlePostArtifact(body);
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify(result));
+      return;
+    }
+
+    if (pathname === '/api/fs/info' && req.method === 'GET') {
+      const queryObj = Object.fromEntries(searchParams.entries());
+      const result = handleGetFsInfo(queryObj);
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify(result));
+      return;
+    }
+
+    if (pathname === '/api/fs/list' && req.method === 'GET') {
+      const queryObj = Object.fromEntries(searchParams.entries());
+      const result = handleGetFsList(queryObj);
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify(result));
+      return;
+    }
+
+    if (pathname === '/api/fs/save' && req.method === 'POST') {
+      const body = await parseJsonBody(req, MAX_CHAT_BODY_BYTES);
+      const result = handlePostFsSave(body);
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify(result));
+      return;
+    }
+
+    if (pathname === '/api/fs/open' && req.method === 'GET') {
+      const queryObj = Object.fromEntries(searchParams.entries());
+      const result = handleGetFsOpen(queryObj);
+      if (queryObj.format === 'json') {
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(
+          JSON.stringify({
+            path: result.path,
+            filePath: result.path,
+            fileName: result.fileName,
+            filename: result.fileName,
+            ext: result.ext,
+            size: result.fileData.length,
+            text: result.isText ? result.fileData.toString('utf-8') : undefined,
+            base64: result.fileData.toString('base64'),
+          })
+        );
+        return;
+      }
+      res.writeHead(200, {
+        'Content-Type': result.contentType,
+        'Content-Length': result.fileData.length,
+        'Cache-Control': 'no-cache',
+        'X-Content-Type-Options': 'nosniff',
+      });
+      res.end(result.fileData);
+      return;
+    }
+
     if (req.method === 'GET' || req.method === 'HEAD') {
       if (
         pathname === '/' ||
         pathname === '/index.html' ||
         pathname === '/playtest' ||
-        pathname === '/sound'
+        pathname === '/sound' ||
+        pathname === '/sprite'
       ) {
         const indexPath = path.join(distPath, 'index.html');
         if (!fs.existsSync(indexPath) || !fs.statSync(indexPath).isFile()) {

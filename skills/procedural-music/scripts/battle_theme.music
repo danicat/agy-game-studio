@@ -17,11 +17,7 @@ inst arp_pulse wave=square   vol=0.04 pan=0.48  adsr=0.005,0.03,0.35,0.02 duty=0
 inst bell      wave=fm       vol=0.05 pan=-0.35 adsr=0.002,0.10,0.15,0.05 fm=3.5,1.8
 inst bass_sq   wave=square   vol=0.09 pan=0.00  adsr=0.005,0.04,0.55,0.02 duty=0.50
 inst sub_sine  wave=sine     vol=0.10 pan=0.00  adsr=0.005,0.06,0.75,0.03
-inst kick      wave=sine     vol=0.13 pan=0.00  adsr=0.002,0.05,0.10,0.02 freq=145Hz->36Hz noise=0.12,0.30
-inst snare     wave=noise    vol=0.08 pan=0.15  adsr=0.001,0.05,0.10,0.03 noise_filter=0.55
-inst hat       wave=noise    vol=0.04 pan=0.30  adsr=0.001,0.015,0.05,0.01 noise_filter=0.95
-inst tom       wave=sine     vol=0.10 pan=-0.20 adsr=0.002,0.06,0.15,0.02 freq=220Hz->85Hz noise=0.08,0.15
-inst crash     wave=noise    vol=0.07 pan=-0.25 adsr=0.002,0.18,0.20,0.08 noise_filter=0.80
+inst drums     wave=kick     vol=0.13 pan=0.00  adsr=0.002,0.05,0.10,0.02 freq=145Hz->36Hz noise=0.12,0.30
 
 # Shared 4-bar silence block (16 beats) for dynamic channel staging
 pattern rest_4bar = R:1 | R:1 | R:1 | R:1
@@ -394,4 +390,4 @@ track ch08_arp_right     arp_pulse: rest_4bar | arp_inv_a@staccato@mp | arp_inv_
 track ch09_fm_bells      bell:      rest_4bar | rest_4bar | rest_4bar | bells_climax_1@mf | bells_climax_2@f | bells_climax_3@ff | bells_res_1@fade_out | rest_4bar
 track ch10_slap_bass     bass_sq:   rest_4bar | bass_a@mp->mf | bass_riser@crescendo | bass_a@f | bass_climax_2@f | bass_climax_3@ff | rest_4bar | rest_4bar
 track ch11_sub_bass      sub_sine:  sub_buildup_1@fade_in | sub_a@mp->mf | sub_riser@crescendo | sub_a@f | sub_climax_2@f | sub_climax_3@ff | sub_res_1@mf | sub_res_2@fade_out
-track ch12_drums:                   drums_intro_pulse@fade_in | drums_buildup_groove@mp->mf | drums_riser_4bar@crescendo | drums_climax_4bar@f * 2 | drums_climax_4bar@ff | drums_catharsis@mf | drums_outro_pulse@fade_out
+track ch12_drums         drums:     drums_intro_pulse@fade_in | drums_buildup_groove@mp->mf | drums_riser_4bar@crescendo | drums_climax_4bar@f * 2 | drums_climax_4bar@ff | drums_catharsis@mf | drums_outro_pulse@fade_out

@@ -24,6 +24,7 @@ inst weeping_harp   wave=harp           gm=orchestral_harp   vol=0.09 pan=0.35  
 inst strings_pad    wave=ym2612_strings gm=string_ensemble_1 vol=0.10 pan=-0.12 lpf=0.32
 inst somber_bass    wave=ym2612_bass    gm=acoustic_bass     vol=0.24 pan=0.00  lpf=0.055
 inst sub_bass       wave=sub_bass       gm=synth_bass_1      vol=0.25 pan=0.00  lpf=0.035
+inst kick           wave=kick           vol=0.19 pan=0.00
 # Drums (kick, snare, tom_hi, tom_mid, tom_low, hat, crash) are pre-seeded
 
 # ============================================================================

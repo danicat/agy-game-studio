@@ -115,6 +115,7 @@ type Score struct {
 	TimeSigNum               int
 	TimeSigDen               int
 	Instruments              map[string]Instrument
+	ExplicitInstruments      map[string]bool
 	Patterns                 map[string][]dslNode
 	Tracks                   []Track
 	GlobalLPF                float64
@@ -190,16 +191,17 @@ func ParseDSL(dslText string) (*Score, error) {
 // ParseDSLWithBarlines parses a procedural music or SFX DSL script with optional '|' measure-boundary validation.
 func ParseDSLWithBarlines(dslText string, validateBarlines bool) (*Score, error) {
 	score := &Score{
-		Title:            "Untitled",
-		Type:             "song",
-		BPM:              120.0,
-		TimeSigNum:       4,
-		TimeSigDen:       4,
-		Instruments:      defaultDrumInstrumentMap(),
-		Patterns:         make(map[string][]dslNode),
-		ValidateBarlines: validateBarlines,
+		Title:               "Untitled",
+		Type:                "song",
+		BPM:                 120.0,
+		TimeSigNum:          4,
+		TimeSigDen:          4,
+		Instruments:         defaultDrumInstrumentMap(),
+		ExplicitInstruments: make(map[string]bool),
+		Patterns:            make(map[string][]dslNode),
+		ValidateBarlines:    validateBarlines,
 	}
-	explicitInsts := make(map[string]bool)
+	explicitInsts := score.ExplicitInstruments
 
 	rawLines := strings.Split(dslText, "\n")
 	type logicalStatement struct {
@@ -533,14 +535,16 @@ func unquoteDSLString(s string) string {
 }
 
 func defaultDrumInstrumentMap() map[string]Instrument {
-	drums := make(map[string]Instrument, 8)
+	drums := make(map[string]Instrument, 10)
 	for _, spec := range []struct {
 		name string
 		wave string
 		gm   int
 	}{
+		{"drums", "kick", 36},
 		{"kick", "kick", 36},
 		{"snare", "snare", 38},
+		{"tom", "tom", 47},
 		{"tom_hi", "tom", 50},
 		{"tom_mid", "tom", 47},
 		{"tom_low", "tom", 45},
@@ -564,6 +568,15 @@ func defaultDrumInstrumentMap() map[string]Instrument {
 		drums[spec.name] = inst
 	}
 	return drums
+}
+
+func isDrumKitWave(w string) bool {
+	switch strings.ToLower(w) {
+	case "kick", "ym2612_kick", "snare", "ym2612_snare", "tom", "ym2612_tom", "hat", "ym2612_hat", "open_hat", "ym2612_open_hat", "crash", "ym2612_crash", "noise":
+		return true
+	default:
+		return false
+	}
 }
 
 func applyWaveArchetypeDefaults(inst *Instrument) {
@@ -2354,6 +2367,15 @@ func (s *Score) parseSingleAtomEvent(atom, defaultInst, fallbackDur string, tran
 
 	// 4. Check for bare Instrument Trigger: 'kick:8', 'snare:16', 'hat:16'
 	if inst, ok := s.Instruments[head]; ok {
+		if defaultInst != "" && defaultInst != head && (s.ExplicitInstruments == nil || !s.ExplicitInstruments[head]) {
+			if defInst, defOk := s.Instruments[defaultInst]; defOk && isDrumKitWave(defInst.WaveType) && isDrumKitWave(inst.WaveType) {
+				volScale := defInst.Volume / 0.19
+				if volScale > 0 {
+					inst.Volume *= volScale
+				}
+				inst.Pan = math.Max(-1.0, math.Min(1.0, inst.Pan+defInst.Pan))
+			}
+		}
 		startHz := inst.DefaultStartFreq
 		endHz := inst.DefaultEndFreq
 		if startHz <= 0 {

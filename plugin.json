@@ -1,14 +1,13 @@
 {
   "name": "agy-game-studio",
-  "displayName": "Antigravity 2D Game Studio",
+  "displayName": "Game Dev Studio",
   "version": "0.2.0",
-  "description": "End-to-end 2D game development studio for Go and Ebitengine with live 60 FPS WASM Playtest Studio, 10-second DVR GIF bug annotation, Sound Studio procedural audio (.music & .sfx) synthesis, dual YM2612 FM / Apple CoreAudio engines, and multi-track mixing.",
+  "description": "End-to-end 2D game development studio for Go and Ebitengine with live 60 FPS WASM Playtest tab, 10-second DVR GIF bug annotation, Sound Editor procedural audio (.music & .sfx) synthesis, and Sprite Editor 2D sprite & tileset design (.sprite & .aseprite) in Game Dev Studio.",
   "logo": "assets/logo.svg",
   "suggestedPrompts": [
-    "Design and build a 2D arcade game in Go with Ebitengine and launch it in Playtest Studio",
-    "Open Playtest Studio to playtest my Ebitengine game and capture a 10s DVR GIF bug report",
-    "Open Sound Studio to compose chiptune BGM or design procedural sound effects with live waveform and spectrum analysis",
-    "Generate procedural 2D sprites, particle VFX, and a chiptune soundtrack for my game"
+    "Design and build a 2D arcade game in Go with Ebitengine and launch it in Game Dev Studio",
+    "Open Game Dev Studio to playtest my Ebitengine game and capture a 10s DVR GIF bug report",
+    "Open the Sound Editor in Game Dev Studio to compose chiptune BGM or design procedural sound effects with live waveform and spectrum analysis",
+    "Open the Sprite Editor in Game Dev Studio to design procedural 2D sprites, tilesets, and frame animations and export to .aseprite"
   ]
 }
-

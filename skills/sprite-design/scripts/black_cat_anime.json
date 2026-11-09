@@ -1,0 +1,790 @@
+{
+  "frames": [
+    {
+      "filename": "black_cat_anime #0",
+      "frame": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "duration": 100
+    },
+    {
+      "filename": "black_cat_anime #1",
+      "frame": {
+        "x": 256,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "duration": 100
+    },
+    {
+      "filename": "black_cat_anime #2",
+      "frame": {
+        "x": 512,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "duration": 100
+    },
+    {
+      "filename": "black_cat_anime #3",
+      "frame": {
+        "x": 768,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "duration": 100
+    },
+    {
+      "filename": "black_cat_anime #4",
+      "frame": {
+        "x": 0,
+        "y": 256,
+        "w": 256,
+        "h": 256
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "duration": 100
+    },
+    {
+      "filename": "black_cat_anime #5",
+      "frame": {
+        "x": 256,
+        "y": 256,
+        "w": 256,
+        "h": 256
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "duration": 100
+    },
+    {
+      "filename": "black_cat_anime #6",
+      "frame": {
+        "x": 512,
+        "y": 256,
+        "w": 256,
+        "h": 256
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "duration": 100
+    },
+    {
+      "filename": "black_cat_anime #7",
+      "frame": {
+        "x": 768,
+        "y": 256,
+        "w": 256,
+        "h": 256
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "duration": 100
+    },
+    {
+      "filename": "black_cat_anime #8",
+      "frame": {
+        "x": 0,
+        "y": 512,
+        "w": 256,
+        "h": 256
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "duration": 100
+    },
+    {
+      "filename": "black_cat_anime #9",
+      "frame": {
+        "x": 256,
+        "y": 512,
+        "w": 256,
+        "h": 256
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "duration": 100
+    },
+    {
+      "filename": "black_cat_anime #10",
+      "frame": {
+        "x": 512,
+        "y": 512,
+        "w": 256,
+        "h": 256
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "duration": 100
+    },
+    {
+      "filename": "black_cat_anime #11",
+      "frame": {
+        "x": 768,
+        "y": 512,
+        "w": 256,
+        "h": 256
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "duration": 100
+    },
+    {
+      "filename": "black_cat_anime #12",
+      "frame": {
+        "x": 0,
+        "y": 768,
+        "w": 256,
+        "h": 256
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "duration": 100
+    },
+    {
+      "filename": "black_cat_anime #13",
+      "frame": {
+        "x": 256,
+        "y": 768,
+        "w": 256,
+        "h": 256
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "duration": 100
+    },
+    {
+      "filename": "black_cat_anime #14",
+      "frame": {
+        "x": 512,
+        "y": 768,
+        "w": 256,
+        "h": 256
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "duration": 100
+    },
+    {
+      "filename": "black_cat_anime #15",
+      "frame": {
+        "x": 768,
+        "y": 768,
+        "w": 256,
+        "h": 256
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "duration": 100
+    },
+    {
+      "filename": "black_cat_anime #16",
+      "frame": {
+        "x": 0,
+        "y": 1024,
+        "w": 256,
+        "h": 256
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "duration": 100
+    },
+    {
+      "filename": "black_cat_anime #17",
+      "frame": {
+        "x": 256,
+        "y": 1024,
+        "w": 256,
+        "h": 256
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "duration": 100
+    },
+    {
+      "filename": "black_cat_anime #18",
+      "frame": {
+        "x": 512,
+        "y": 1024,
+        "w": 256,
+        "h": 256
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "duration": 100
+    },
+    {
+      "filename": "black_cat_anime #19",
+      "frame": {
+        "x": 768,
+        "y": 1024,
+        "w": 256,
+        "h": 256
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "duration": 100
+    },
+    {
+      "filename": "black_cat_anime #20",
+      "frame": {
+        "x": 0,
+        "y": 1280,
+        "w": 256,
+        "h": 256
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "duration": 100
+    },
+    {
+      "filename": "black_cat_anime #21",
+      "frame": {
+        "x": 256,
+        "y": 1280,
+        "w": 256,
+        "h": 256
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "duration": 100
+    },
+    {
+      "filename": "black_cat_anime #22",
+      "frame": {
+        "x": 512,
+        "y": 1280,
+        "w": 256,
+        "h": 256
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "duration": 100
+    },
+    {
+      "filename": "black_cat_anime #23",
+      "frame": {
+        "x": 768,
+        "y": 1280,
+        "w": 256,
+        "h": 256
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "duration": 100
+    },
+    {
+      "filename": "black_cat_anime #24",
+      "frame": {
+        "x": 0,
+        "y": 1536,
+        "w": 256,
+        "h": 256
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "duration": 100
+    },
+    {
+      "filename": "black_cat_anime #25",
+      "frame": {
+        "x": 256,
+        "y": 1536,
+        "w": 256,
+        "h": 256
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "duration": 100
+    },
+    {
+      "filename": "black_cat_anime #26",
+      "frame": {
+        "x": 512,
+        "y": 1536,
+        "w": 256,
+        "h": 256
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "duration": 100
+    },
+    {
+      "filename": "black_cat_anime #27",
+      "frame": {
+        "x": 768,
+        "y": 1536,
+        "w": 256,
+        "h": 256
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "duration": 100
+    },
+    {
+      "filename": "black_cat_anime #28",
+      "frame": {
+        "x": 0,
+        "y": 1792,
+        "w": 256,
+        "h": 256
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "duration": 100
+    },
+    {
+      "filename": "black_cat_anime #29",
+      "frame": {
+        "x": 256,
+        "y": 1792,
+        "w": 256,
+        "h": 256
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "duration": 100
+    },
+    {
+      "filename": "black_cat_anime #30",
+      "frame": {
+        "x": 512,
+        "y": 1792,
+        "w": 256,
+        "h": 256
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "duration": 100
+    },
+    {
+      "filename": "black_cat_anime #31",
+      "frame": {
+        "x": 768,
+        "y": 1792,
+        "w": 256,
+        "h": 256
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "duration": 100
+    }
+  ],
+  "meta": {
+    "app": "agy-game-studio/sprite-design",
+    "version": "1.0",
+    "image": ".",
+    "format": "RGBA8888",
+    "size": {
+      "w": 1024,
+      "h": 2048
+    },
+    "frameWidth": 256,
+    "frameHeight": 256,
+    "cols": 4,
+    "rows": 8,
+    "scale": "1",
+    "frameTags": [
+      {
+        "name": "idle",
+        "fromFrame": 0,
+        "toFrame": 3,
+        "frames": 4,
+        "durationMs": 100,
+        "loop": "pingpong"
+      },
+      {
+        "name": "walk",
+        "fromFrame": 4,
+        "toFrame": 7,
+        "frames": 4,
+        "durationMs": 100,
+        "loop": "loop"
+      },
+      {
+        "name": "run",
+        "fromFrame": 8,
+        "loopFromFrame": 9,
+        "toFrame": 11,
+        "frames": 4,
+        "durationMs": 100,
+        "loop": "loop"
+      },
+      {
+        "name": "jump",
+        "fromFrame": 12,
+        "toFrame": 15,
+        "frames": 4,
+        "durationMs": 100,
+        "loop": "once"
+      },
+      {
+        "name": "fall",
+        "fromFrame": 16,
+        "toFrame": 19,
+        "frames": 4,
+        "durationMs": 100,
+        "loop": "loop"
+      },
+      {
+        "name": "crouch",
+        "fromFrame": 20,
+        "toFrame": 23,
+        "frames": 4,
+        "durationMs": 100,
+        "loop": "once"
+      },
+      {
+        "name": "sleep",
+        "fromFrame": 24,
+        "toFrame": 27,
+        "frames": 4,
+        "durationMs": 100,
+        "loop": "pingpong"
+      },
+      {
+        "name": "attack",
+        "fromFrame": 28,
+        "toFrame": 31,
+        "frames": 4,
+        "durationMs": 100,
+        "loop": "once"
+      }
+    ]
+  }
+}

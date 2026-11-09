@@ -15,7 +15,18 @@
  */
 
 import { StudioNotifier } from './PlaytestStudioUI.ts';
-import { getSessionId, getWorkspacePath, sidecarFetch } from '../utils/api.ts';
+import {
+  openStudioArtifactModal,
+  openStudioFileModal,
+  openStudioSaveExportModal,
+  type LoadedStudioArtifact
+} from './StudioModals.ts';
+import {
+  getSessionId,
+  getWorkspacePath,
+  sidecarFetch,
+  syncWorkspaceFromHost
+} from '../utils/api.ts';
 
 export interface SoundFileEntry {
   name: string;
@@ -91,6 +102,53 @@ export interface SoundStudioOptions {
 }
 
 type VisualizerMode = 'waveform' | 'spectrum';
+type SoundEditorMode = 'gui' | 'text';
+
+const WAVE_ARCHETYPE_DEFAULTS: Record<string, { volume: number; pan: number }> = {
+  ym2612_guitar: { volume: 0.16, pan: -0.12 },
+  ym2612_rhythm_guitar: { volume: 0.10, pan: 0.36 },
+  ym2612_bell: { volume: 0.06, pan: 0.25 },
+  ym2612_epiano: { volume: 0.13, pan: -0.24 },
+  ym2612_brass: { volume: 0.12, pan: 0.20 },
+  ym2612_strings: { volume: 0.10, pan: -0.30 },
+  ym2612_choir: { volume: 0.10, pan: -0.30 },
+  ym2612_flute: { volume: 0.12, pan: -0.15 },
+  psg_arp: { volume: 0.072, pan: -0.44 },
+  psg_square: { volume: 0.05, pan: 0.48 },
+  ym2612_bass: { volume: 0.24, pan: 0.0 },
+  ym2612_slap_bass: { volume: 0.25, pan: 0.0 },
+  sub_bass: { volume: 0.22, pan: 0.0 },
+  kick: { volume: 0.19, pan: 0.0 },
+  ym2612_kick: { volume: 0.19, pan: 0.0 },
+  snare: { volume: 0.14, pan: 0.08 },
+  ym2612_snare: { volume: 0.14, pan: 0.08 },
+  tom: { volume: 0.14, pan: 0.0 },
+  ym2612_tom: { volume: 0.14, pan: 0.0 },
+  hat: { volume: 0.08, pan: -0.15 },
+  ym2612_hat: { volume: 0.08, pan: -0.15 },
+  open_hat: { volume: 0.09, pan: -0.15 },
+  ym2612_open_hat: { volume: 0.09, pan: -0.15 },
+  crash: { volume: 0.11, pan: 0.20 },
+  ym2612_crash: { volume: 0.11, pan: 0.20 }
+};
+
+function stripDslComment(line: string): string {
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      inQuotes = !inQuotes;
+    } else if (!inQuotes) {
+      if (ch === '#' && (i === 0 || line[i - 1] === ' ' || line[i - 1] === '\t')) {
+        return line.slice(0, i);
+      }
+      if (ch === '/' && i + 1 < line.length && line[i + 1] === '/') {
+        return line.slice(0, i);
+      }
+    }
+  }
+  return line;
+}
 
 interface SfxShaperState {
   title: string;
@@ -475,22 +533,26 @@ export class SoundStudioUI {
   private rootEl: HTMLElement;
 
   // Toolbar controls
+  private activeFileLabelEl!: HTMLElement;
   private tabSfxBtn!: HTMLButtonElement;
   private tabMusicBtn!: HTMLButtonElement;
-  private fileSelectEl!: HTMLSelectElement;
+  private modeGuiBtn!: HTMLButtonElement;
+  private modeTextBtn!: HTMLButtonElement;
+  private vizWaveformBtn!: HTMLButtonElement;
+  private vizSpectrumBtn!: HTMLButtonElement;
   private playBtnEl!: HTMLButtonElement;
   private undoBtnEl!: HTMLButtonElement;
   private redoBtnEl!: HTMLButtonElement;
   private resetBtnEl!: HTMLButtonElement;
   private loopBtnEl!: HTMLButtonElement;
+  private openFileBtnEl!: HTMLButtonElement;
+  private artifactsBtnEl!: HTMLButtonElement;
   private saveBtnEl!: HTMLButtonElement;
   private exportBtnEl!: HTMLButtonElement;
 
-  // Popover controls
-  private engineYmBtn!: HTMLButtonElement;
-  private engineAppleBtn!: HTMLButtonElement;
-  private vizWaveformBtn!: HTMLButtonElement;
-  private vizSpectrumBtn!: HTMLButtonElement;
+  // Text Mode Editor & Diagnostics
+  private textEditorPaneEl!: HTMLElement;
+  private textEditorTitleEl!: HTMLElement;
   private diagnosticsContainerEl!: HTMLElement;
   private editorTextarea!: HTMLTextAreaElement;
 
@@ -527,15 +589,11 @@ export class SoundStudioUI {
   private sendChatBtnEl!: HTMLButtonElement;
 
   // State
-  private catalog: SoundFilesCatalog = {
-    musicLibrary: [],
-    sfxLibrary: [],
-    workspaceFiles: []
-  };
   private sfxPresets: SFXPresetInfo[] = [...FALLBACK_SFX_PRESETS];
   private activeFilePath: string = '';
-  private activeFileName: string = 'laser_arcade.sfx';
+  private activeFileName: string = '';
   private activeDocType: 'music' | 'sfx' = 'sfx';
+  private editorMode: SoundEditorMode = 'gui';
   private useAppleSynth = false;
   private loopEnabled = false;
   private visualizerMode: VisualizerMode = 'waveform';
@@ -555,6 +613,7 @@ export class SoundStudioUI {
   private exportWavNeedsResynth = false;
   private lastBuildId: string = '';
   private lastReport: SoundValidationReport | null = null;
+  private synthGenId = 0;
   private isSynthesizing = false;
   private pendingSynthRequest: { autoPlay: boolean; preservePlayhead: boolean } | null = null;
   private realtimeDebounceTimer: number | null = null;
@@ -604,190 +663,189 @@ export class SoundStudioUI {
   private renderLayout(): void {
     this.rootEl.innerHTML = `
       <div class="sound-studio-shell">
-        <!-- Single-Row Minimalist Toolbar -->
-        <header class="sound-toolbar">
-          <div class="sound-toolbar-main">
-            <div class="sound-mode-tabs" role="tablist" aria-label="Sound Studio Mode">
+        <!-- Two-Row Standardized Toolbar -->
+        <header class="sound-toolbar sound-toolbar-two-rows">
+          <div class="sound-toolbar-row">
+            <div class="sound-toolbar-main">
+              <div class="sound-mode-tabs" role="tablist" aria-label="Sound Editor Mode">
+                <button
+                  type="button"
+                  id="tab-mode-music"
+                  class="sound-mode-tab"
+                  role="tab"
+                  aria-selected="false"
+                  aria-controls="sound-music-mixer"
+                  tabindex="-1"
+                  title="Song (.music)"
+                >
+                  Song
+                </button>
+                <button
+                  type="button"
+                  id="tab-mode-sfx"
+                  class="sound-mode-tab active"
+                  role="tab"
+                  aria-selected="true"
+                  aria-controls="sound-sfx-shaper"
+                  tabindex="0"
+                  title="Sound FX (.sfx)"
+                >
+                  SFX
+                </button>
+              </div>
+
+              <span
+                id="sound-active-file-label"
+                class="file-badge-pill"
+                title="Active sound or music file"
+              >Untitled.sfx</span>
+            </div>
+
+            <div class="sound-toolbar-edges">
               <button
                 type="button"
-                id="tab-sound-sfx"
-                class="sound-mode-tab active"
-                role="tab"
-                aria-selected="true"
-                aria-controls="sound-sfx-shaper"
-                tabindex="0"
+                id="sound-open-file-btn"
+                class="btn btn-sm btn-outline btn-header-action"
+                title="Open .music or .sfx file from workspace or local disk"
               >
-                SFX
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                <span class="btn-label">Open</span>
               </button>
+
               <button
                 type="button"
-                id="tab-sound-music"
-                class="sound-mode-tab"
-                role="tab"
-                aria-selected="false"
-                aria-controls="sound-music-mixer"
-                tabindex="-1"
+                id="sound-artifacts-btn"
+                class="btn btn-sm btn-outline btn-header-action"
+                title="Open or save session artifacts (.music, .sfx)"
               >
-                Music
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+                <span class="btn-label">Artifacts</span>
+              </button>
+
+              <button
+                type="button"
+                id="sound-save-btn"
+                class="btn btn-sm btn-outline btn-header-action"
+                title="Save .music or .sfx DSL file"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                <span class="btn-label">Save</span>
+              </button>
+
+              <button
+                type="button"
+                id="sound-export-btn"
+                class="btn btn-sm btn-primary btn-header-action"
+                title="Export synthesized .wav audio"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                <span class="btn-label">Export</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="sound-toolbar-row">
+            <div class="sound-toolbar-main">
+              <div class="sound-mode-tabs" role="tablist" aria-label="Editor View Mode">
+                <button
+                  type="button"
+                  id="btn-sound-mode-gui"
+                  class="sound-mode-tab active"
+                  role="tab"
+                  aria-selected="true"
+                  tabindex="0"
+                  title="Visual GUI controls"
+                >
+                  GUI
+                </button>
+                <button
+                  type="button"
+                  id="btn-sound-mode-text"
+                  class="sound-mode-tab"
+                  role="tab"
+                  aria-selected="false"
+                  tabindex="-1"
+                  title="Edit raw .sfx / .music DSL text"
+                >
+                  Text
+                </button>
+              </div>
+
+              <div class="sound-mode-tabs" role="group" aria-label="Visualizer Mode">
+                <button
+                  type="button"
+                  id="btn-viz-waveform"
+                  class="sound-mode-tab active"
+                  title="Show waveform visualizer"
+                >
+                  Wave
+                </button>
+                <button
+                  type="button"
+                  id="btn-viz-spectrum"
+                  class="sound-mode-tab"
+                  title="Show frequency spectrum visualizer"
+                >
+                  Spectrum
+                </button>
+              </div>
+
+              <button
+                type="button"
+                id="btn-sound-play"
+                class="btn btn-primary sound-play-btn"
+              >
+                Play
               </button>
             </div>
 
-            <select
-              id="sound-file-select"
-              class="sound-file-select"
-              aria-label="Select sound effect or music track"
-            >
-              <option value="">Select sound effect...</option>
-            </select>
+            <div class="sound-toolbar-edges">
+              <button
+                type="button"
+                id="btn-sound-undo"
+                class="icon sound-icon-btn"
+                style="--icon: var(--icon-undo);"
+                aria-label="Undo change"
+                interestfor="tip-sound-undo"
+                disabled
+              ></button>
+              <div id="tip-sound-undo" popover="hint" class="sound-hint-tooltip">Undo (⌘Z)</div>
 
-            <button
-              type="button"
-              id="btn-sound-play"
-              class="btn btn-primary sound-play-btn"
-            >
-              Play
-            </button>
-          </div>
+              <button
+                type="button"
+                id="btn-sound-redo"
+                class="icon sound-icon-btn"
+                style="--icon: var(--icon-redo);"
+                aria-label="Redo change"
+                interestfor="tip-sound-redo"
+                disabled
+              ></button>
+              <div id="tip-sound-redo" popover="hint" class="sound-hint-tooltip">Redo (⇧⌘Z)</div>
 
-          <div class="sound-toolbar-edges">
-            <button
-              type="button"
-              id="btn-sound-undo"
-              class="icon sound-icon-btn"
-              style="--icon: var(--icon-undo);"
-              aria-label="Undo change"
-              interestfor="tip-sound-undo"
-              disabled
-            ></button>
-            <div id="tip-sound-undo" popover="hint" class="sound-hint-tooltip">Undo (⌘Z)</div>
+              <button
+                type="button"
+                id="btn-sound-reset"
+                class="icon sound-icon-btn"
+                style="--icon: var(--icon-reset);"
+                aria-label="Reset changes"
+                interestfor="tip-sound-reset"
+                disabled
+              ></button>
+              <div id="tip-sound-reset" popover="hint" class="sound-hint-tooltip">Reset to original</div>
 
-            <button
-              type="button"
-              id="btn-sound-redo"
-              class="icon sound-icon-btn"
-              style="--icon: var(--icon-redo);"
-              aria-label="Redo change"
-              interestfor="tip-sound-redo"
-              disabled
-            ></button>
-            <div id="tip-sound-redo" popover="hint" class="sound-hint-tooltip">Redo (⇧⌘Z)</div>
-
-            <button
-              type="button"
-              id="btn-sound-reset"
-              class="icon sound-icon-btn"
-              style="--icon: var(--icon-reset);"
-              aria-label="Reset changes"
-              interestfor="tip-sound-reset"
-              disabled
-            ></button>
-            <div id="tip-sound-reset" popover="hint" class="sound-hint-tooltip">Reset to original</div>
-
-            <span class="sound-toolbar-divider" aria-hidden="true"></span>
-
-            <button
-              type="button"
-              id="btn-sound-loop"
-              class="icon sound-icon-btn"
-              style="--icon: var(--icon-repeat);"
-              aria-label="Loop playback"
-              aria-pressed="false"
-              interestfor="tip-sound-loop"
-            ></button>
-            <div id="tip-sound-loop" popover="hint" class="sound-hint-tooltip">Loop playback</div>
-
-            <button
-              type="button"
-              id="btn-sound-new-trigger"
-              class="icon sound-icon-btn"
-              style="--icon: var(--icon-plus);"
-              popovertarget="sound-new-menu"
-              aria-label="New sound or song"
-              interestfor="tip-sound-new"
-            ></button>
-            <div id="tip-sound-new" popover="hint" class="sound-hint-tooltip">New sound or song</div>
-
-            <button
-              type="button"
-              id="btn-sound-settings-trigger"
-              class="icon sound-icon-btn"
-              style="--icon: var(--icon-tune);"
-              popovertarget="sound-settings-menu"
-              aria-label="Audio settings and diagnostics"
-              interestfor="tip-sound-settings"
-            ></button>
-            <div id="tip-sound-settings" popover="hint" class="sound-hint-tooltip">Settings &amp; Code</div>
-
-            <button
-              type="button"
-              id="btn-sound-save"
-              class="icon sound-icon-btn"
-              style="--icon: var(--icon-save);"
-              aria-label="Save file"
-              interestfor="tip-sound-save"
-            ></button>
-            <div id="tip-sound-save" popover="hint" class="sound-hint-tooltip">Save to project</div>
-
-            <button
-              type="button"
-              id="btn-sound-export"
-              class="icon sound-icon-btn"
-              style="--icon: var(--icon-download);"
-              aria-label="Download WAV"
-              interestfor="tip-sound-export"
-            ></button>
-            <div id="tip-sound-export" popover="hint" class="sound-hint-tooltip">Download WAV</div>
+              <button
+                type="button"
+                id="btn-sound-loop"
+                class="icon sound-icon-btn"
+                style="--icon: var(--icon-repeat);"
+                aria-label="Loop playback"
+                aria-pressed="false"
+                interestfor="tip-sound-loop"
+              ></button>
+              <div id="tip-sound-loop" popover="hint" class="sound-hint-tooltip">Loop playback</div>
+            </div>
           </div>
         </header>
-
-        <!-- Light-Dismiss Popover: New Sound / Song -->
-        <div id="sound-new-menu" popover="auto" class="sound-popover-panel">
-          <button type="button" id="btn-sound-new-sfx" class="sound-popover-action">
-            New Sound Effect (.sfx)
-          </button>
-          <button type="button" id="btn-sound-new-music" class="sound-popover-action">
-            New Music Track (.music)
-          </button>
-        </div>
-
-        <!-- Light-Dismiss Popover: Settings, Diagnostics & Raw DSL Code -->
-        <aside id="sound-settings-menu" popover="auto" class="sound-popover-panel sound-settings-popover">
-          <div class="sound-popover-section">
-            <span class="sound-popover-label">Visualizer</span>
-            <div class="sound-segmented-group">
-              <button type="button" id="btn-viz-waveform" class="sound-seg-btn active">Waveform</button>
-              <button type="button" id="btn-viz-spectrum" class="sound-seg-btn">Spectrum</button>
-            </div>
-          </div>
-
-          <div class="sound-popover-section">
-            <span class="sound-popover-label">Music Synth Engine</span>
-            <div class="sound-segmented-group">
-              <button type="button" id="btn-engine-ym2612" class="sound-seg-btn active">16-Bit YM2612</button>
-              <button type="button" id="btn-engine-apple" class="sound-seg-btn">Real Instruments</button>
-            </div>
-          </div>
-
-          <details class="sound-popover-details" id="sound-diagnostics-details">
-            <summary>Audio Quality &amp; Diagnostics</summary>
-            <div id="sound-diagnostics-body" class="sound-diagnostics-body"></div>
-          </details>
-
-          <details class="sound-popover-details">
-            <summary>Advanced: DSL Source Code</summary>
-            <div class="sound-dsl-drawer-body">
-              <textarea
-                id="sound-dsl-textarea"
-                class="sound-dsl-textarea"
-                spellcheck="false"
-                aria-label="Procedural audio DSL source"
-              ></textarea>
-              <button type="button" id="btn-apply-raw-dsl" class="btn btn-secondary sound-apply-dsl-btn">
-                Apply Code
-              </button>
-            </div>
-          </details>
-        </aside>
 
         <!-- Forefront Hero Stage (80%+ of screen) -->
         <main class="sound-hero-stage">
@@ -801,8 +859,7 @@ export class SoundStudioUI {
                   type="button"
                   id="btn-sound-status-pill"
                   class="sound-status-pill pass"
-                  popovertarget="sound-settings-menu"
-                  title="Click to inspect audio diagnostics"
+                  title="Click to toggle GUI / Text view"
                 >
                   Ready
                 </button>
@@ -820,12 +877,12 @@ export class SoundStudioUI {
             />
           </section>
 
-          <!-- 2A. Human-Friendly Sound Effect Shaper (visible for .sfx) -->
+          <!-- 2A. Human-Friendly Sound Effect Shaper (visible in GUI mode for .sfx) -->
           <section
             id="sound-sfx-shaper"
             class="sound-controls-card"
             role="tabpanel"
-            aria-labelledby="tab-sound-sfx"
+            aria-labelledby="tab-mode-sfx"
           >
             <div class="sound-preset-strip" id="sound-sfx-preset-grid" aria-label="Sound Effect Presets"></div>
 
@@ -877,12 +934,12 @@ export class SoundStudioUI {
             </div>
           </section>
 
-          <!-- 2B. Human-Friendly Song Mixer (visible for .music) -->
+          <!-- 2B. Human-Friendly Song Mixer (visible in GUI mode for .music) -->
           <section
             id="sound-music-mixer"
             class="sound-controls-card hidden"
             role="tabpanel"
-            aria-labelledby="tab-sound-music"
+            aria-labelledby="tab-mode-music"
           >
             <div class="sound-music-top-bar">
               <label class="sound-slider-field sound-tempo-field">
@@ -903,6 +960,33 @@ export class SoundStudioUI {
             </div>
 
             <div id="sound-track-list" class="sound-track-list"></div>
+          </section>
+
+          <!-- 2C. Direct DSL Text Editor (visible in Text mode) -->
+          <section
+            id="sound-text-editor-pane"
+            class="sprite-text-card hidden"
+            aria-label="Audio DSL Source Editor"
+          >
+            <div class="sprite-text-header">
+              <span id="sound-text-editor-title" class="sprite-text-title">.sfx Source</span>
+              <div class="sprite-text-actions">
+                <button type="button" id="btn-apply-raw-dsl" class="btn btn-secondary btn-sm">
+                  Apply Code
+                </button>
+                <button type="button" id="btn-save-raw-dsl" class="btn btn-primary btn-sm">
+                  Save File
+                </button>
+              </div>
+            </div>
+            <textarea
+              id="sound-dsl-textarea"
+              class="sound-dsl-textarea sprite-full-textarea"
+              spellcheck="false"
+              placeholder="# Open a .sfx file above, or write .sfx DSL here..."
+              aria-label="Procedural audio DSL source"
+            ></textarea>
+            <div id="sound-diagnostics-body" class="sound-diagnostics-body"></div>
           </section>
         </main>
 
@@ -926,21 +1010,25 @@ export class SoundStudioUI {
       </div>
     `;
 
-    this.tabSfxBtn = this.rootEl.querySelector('#tab-sound-sfx') as HTMLButtonElement;
-    this.tabMusicBtn = this.rootEl.querySelector('#tab-sound-music') as HTMLButtonElement;
-    this.fileSelectEl = this.rootEl.querySelector('#sound-file-select') as HTMLSelectElement;
+    this.activeFileLabelEl = this.rootEl.querySelector('#sound-active-file-label') as HTMLElement;
+    this.tabMusicBtn = this.rootEl.querySelector('#tab-mode-music') as HTMLButtonElement;
+    this.tabSfxBtn = this.rootEl.querySelector('#tab-mode-sfx') as HTMLButtonElement;
+    this.modeGuiBtn = this.rootEl.querySelector('#btn-sound-mode-gui') as HTMLButtonElement;
+    this.modeTextBtn = this.rootEl.querySelector('#btn-sound-mode-text') as HTMLButtonElement;
+    this.vizWaveformBtn = this.rootEl.querySelector('#btn-viz-waveform') as HTMLButtonElement;
+    this.vizSpectrumBtn = this.rootEl.querySelector('#btn-viz-spectrum') as HTMLButtonElement;
     this.playBtnEl = this.rootEl.querySelector('#btn-sound-play') as HTMLButtonElement;
     this.undoBtnEl = this.rootEl.querySelector('#btn-sound-undo') as HTMLButtonElement;
     this.redoBtnEl = this.rootEl.querySelector('#btn-sound-redo') as HTMLButtonElement;
     this.resetBtnEl = this.rootEl.querySelector('#btn-sound-reset') as HTMLButtonElement;
     this.loopBtnEl = this.rootEl.querySelector('#btn-sound-loop') as HTMLButtonElement;
-    this.saveBtnEl = this.rootEl.querySelector('#btn-sound-save') as HTMLButtonElement;
-    this.exportBtnEl = this.rootEl.querySelector('#btn-sound-export') as HTMLButtonElement;
+    this.openFileBtnEl = this.rootEl.querySelector('#sound-open-file-btn') as HTMLButtonElement;
+    this.artifactsBtnEl = this.rootEl.querySelector('#sound-artifacts-btn') as HTMLButtonElement;
+    this.saveBtnEl = this.rootEl.querySelector('#sound-save-btn') as HTMLButtonElement;
+    this.exportBtnEl = this.rootEl.querySelector('#sound-export-btn') as HTMLButtonElement;
 
-    this.engineYmBtn = this.rootEl.querySelector('#btn-engine-ym2612') as HTMLButtonElement;
-    this.engineAppleBtn = this.rootEl.querySelector('#btn-engine-apple') as HTMLButtonElement;
-    this.vizWaveformBtn = this.rootEl.querySelector('#btn-viz-waveform') as HTMLButtonElement;
-    this.vizSpectrumBtn = this.rootEl.querySelector('#btn-viz-spectrum') as HTMLButtonElement;
+    this.textEditorPaneEl = this.rootEl.querySelector('#sound-text-editor-pane') as HTMLElement;
+    this.textEditorTitleEl = this.rootEl.querySelector('#sound-text-editor-title') as HTMLElement;
     this.diagnosticsContainerEl = this.rootEl.querySelector('#sound-diagnostics-body') as HTMLElement;
     this.editorTextarea = this.rootEl.querySelector('#sound-dsl-textarea') as HTMLTextAreaElement;
 
@@ -975,6 +1063,83 @@ export class SoundStudioUI {
 
     this.renderSfxPresetChips();
     this.renderSfxToneButtons();
+    this.updateActiveFileLabel();
+    this.syncEditorModeUI();
+  }
+
+  private updateActiveFileLabel(): void {
+    if (!this.activeFileLabelEl) return;
+    const defaultLabel = this.activeDocType === 'music' ? 'Untitled.music' : 'Untitled.sfx';
+    const label = this.activeFileName ? this.activeFileName : defaultLabel;
+    this.activeFileLabelEl.textContent = label;
+    this.activeFileLabelEl.title = this.activeFilePath || label;
+  }
+
+  private switchEditorMode(mode: SoundEditorMode): void {
+    if (this.editorMode === mode) return;
+    if (mode === 'gui' && this.editorMode === 'text') {
+      this.syncControlsFromDsl(this.editorTextarea.value);
+    }
+    this.editorMode = mode;
+    this.syncEditorModeUI();
+  }
+
+  private syncEditorModeUI(): void {
+    const isGui = this.editorMode === 'gui';
+    if (this.modeGuiBtn && this.modeTextBtn) {
+      this.modeGuiBtn.classList.toggle('active', isGui);
+      this.modeGuiBtn.setAttribute('aria-selected', String(isGui));
+      this.modeGuiBtn.setAttribute('tabindex', isGui ? '0' : '-1');
+
+      this.modeTextBtn.classList.toggle('active', !isGui);
+      this.modeTextBtn.setAttribute('aria-selected', String(!isGui));
+      this.modeTextBtn.setAttribute('tabindex', !isGui ? '0' : '-1');
+    }
+    if (this.textEditorTitleEl) {
+      const label = this.activeFileName
+        ? `${this.activeFileName} (${this.activeDocType === 'music' ? '.music' : '.sfx'})`
+        : this.activeDocType === 'music'
+          ? '.music Source'
+          : '.sfx Source';
+      this.textEditorTitleEl.textContent = label;
+    }
+    if (this.editorTextarea) {
+      this.editorTextarea.placeholder =
+        this.activeDocType === 'music'
+          ? '# Open a .music file above, or write .music DSL here...'
+          : '# Open a .sfx file above, or write .sfx DSL here...';
+    }
+    if (this.modeTextBtn) {
+      this.modeTextBtn.title =
+        this.activeDocType === 'music' ? 'Edit raw .music DSL text' : 'Edit raw .sfx DSL text';
+    }
+    if (this.openFileBtnEl) {
+      this.openFileBtnEl.title =
+        this.activeDocType === 'music'
+          ? 'Open .music song file from workspace or local disk'
+          : 'Open .sfx sound effect file from workspace or local disk';
+    }
+    if (this.artifactsBtnEl) {
+      this.artifactsBtnEl.title =
+        this.activeDocType === 'music'
+          ? 'Open or save .music session artifacts'
+          : 'Open or save .sfx session artifacts';
+    }
+    if (this.saveBtnEl) {
+      this.saveBtnEl.title =
+        this.activeDocType === 'music' ? 'Save .music DSL file' : 'Save .sfx DSL file';
+    }
+    if (this.chatNoteInputEl) {
+      this.chatNoteInputEl.placeholder =
+        this.activeDocType === 'music'
+          ? 'Describe a song or ask to change the arrangement...'
+          : 'Describe a sound effect or ask to tweak this cue...';
+    }
+    if (this.sfxShaperPaneEl && this.musicMixerPaneEl && this.textEditorPaneEl) {
+      this.sfxShaperPaneEl.classList.toggle('hidden', !isGui || this.activeDocType !== 'sfx');
+      this.musicMixerPaneEl.classList.toggle('hidden', !isGui || this.activeDocType !== 'music');
+      this.textEditorPaneEl.classList.toggle('hidden', isGui);
+    }
   }
 
   private renderSfxPresetChips(): void {
@@ -1103,12 +1268,11 @@ export class SoundStudioUI {
   }
 
   private syncLiveTrackMetaFromDsl(dsl: string): void {
-    const tracks = this.lastReport?.tracks || [];
+    const tracks =
+      this.lastReport?.tracks && this.lastReport.tracks.length > 0
+        ? this.lastReport.tracks
+        : this.parseMusicTracksFromDsl(dsl);
     for (const tr of tracks) {
-      const base = this.trackStemBaseMeta.get(tr.name) || {
-        volume: tr.volume > 0 ? tr.volume : 0.2,
-        pan: tr.pan || 0
-      };
       const isDrum =
         /drum|perc|toms/i.test(tr.name) ||
         DRUM_WAVE_TYPES.has((tr.waveType || '').toLowerCase());
@@ -1118,11 +1282,29 @@ export class SoundStudioUI {
         new RegExp(`^\\s*(?:inst|patch)\\s+${escapedInst}\\b(.*)$`, 'm')
       );
       const instLine = instLineMatch ? instLineMatch[1] : '';
+      const waveMatch = instLine.match(/\bwave=([^\s]+)/i);
+      const gmMatch = instLine.match(/\bgm=([^\s]+)/i);
+      const presetMatch = instLine.match(/\bpreset=([^\s]+)/i);
+      const rawWave = waveMatch
+        ? waveMatch[1]
+        : gmMatch
+          ? gmMatch[1]
+          : presetMatch
+            ? presetMatch[1]
+            : tr.waveType || (isDrum ? 'kick' : 'ym2612_brass');
+      const archDefaults =
+        WAVE_ARCHETYPE_DEFAULTS[rawWave.toLowerCase()] ||
+        WAVE_ARCHETYPE_DEFAULTS[normalizeMusicWaveId(rawWave)];
+
+      const base = this.trackStemBaseMeta.get(tr.name) || {
+        volume: tr.volume > 0 ? tr.volume : archDefaults?.volume ?? 0.2,
+        pan: typeof tr.pan === 'number' ? tr.pan : archDefaults?.pan ?? 0
+      };
       const volMatch = instLine.match(/\b(?:vol|volume)=([0-9.]+)/i);
       const panMatch = instLine.match(/\bpan=([-+0-9.]+)/i);
 
-      const liveVol = volMatch ? Number(volMatch[1]) : base.volume;
-      const livePan = panMatch ? Number(panMatch[1]) : base.pan;
+      const liveVol = volMatch ? Number(volMatch[1]) : archDefaults?.volume ?? base.volume;
+      const livePan = panMatch ? Number(panMatch[1]) : archDefaults?.pan ?? base.pan;
       this.trackLiveMeta.set(tr.name, { volume: liveVol, pan: livePan });
 
       const cached = this.trackMetaCache.get(tr.name);
@@ -1145,8 +1327,6 @@ export class SoundStudioUI {
     this.soloTracks = new Set(snap.soloTracks);
     this.muteTracks = new Set(snap.muteTracks);
     this.useAppleSynth = snap.useAppleSynth;
-    this.engineYmBtn.classList.toggle('active', !snap.useAppleSynth);
-    this.engineAppleBtn.classList.toggle('active', snap.useAppleSynth);
     this.musicBankChipBtn.classList.toggle('active', !snap.useAppleSynth);
     this.musicBankAppleBtn.classList.toggle('active', snap.useAppleSynth);
 
@@ -1154,9 +1334,11 @@ export class SoundStudioUI {
       this.dslDirty = false;
       this.exportWavNeedsResynth = true;
       this.syncLiveTrackMetaFromDsl(snap.dsl);
-      if (this.lastReport?.tracks) {
-        this.renderMusicTrackMixer(this.lastReport.tracks);
-      }
+      const tracks =
+        this.lastReport?.tracks && this.lastReport.tracks.length > 0
+          ? this.lastReport.tracks
+          : this.parseMusicTracksFromDsl(snap.dsl);
+      this.renderMusicTrackMixer(tracks);
       this.applyLiveTrackMixerState();
       this.updateHistoryButtonsUI();
       return;
@@ -1221,9 +1403,9 @@ export class SoundStudioUI {
         e.preventDefault();
         let targetType: 'sfx' | 'music';
         if (e.key === 'Home') {
-          targetType = 'sfx';
-        } else if (e.key === 'End') {
           targetType = 'music';
+        } else if (e.key === 'End') {
+          targetType = 'sfx';
         } else {
           targetType = this.activeDocType === 'sfx' ? 'music' : 'sfx';
         }
@@ -1236,11 +1418,12 @@ export class SoundStudioUI {
     this.tabSfxBtn.addEventListener('keydown', handleTabKeydown);
     this.tabMusicBtn.addEventListener('keydown', handleTabKeydown);
 
-    this.fileSelectEl.addEventListener('change', () => {
-      const selectedPath = this.fileSelectEl.value;
-      if (selectedPath) {
-        void this.loadFileFromPath(selectedPath, true);
-      }
+    this.openFileBtnEl.addEventListener('click', () => {
+      this.openFileModal();
+    });
+
+    this.artifactsBtnEl.addEventListener('click', () => {
+      this.openArtifactModal();
     });
 
     this.playBtnEl.addEventListener('click', () => {
@@ -1251,9 +1434,13 @@ export class SoundStudioUI {
           this.playOffsetSec > 0 && this.playOffsetSec < this.decodedBuffer.duration - 0.05
             ? this.playOffsetSec
             : 0;
-        void this.startBufferPlayback(startOffset);
-      } else {
+        this.startBufferPlayback(startOffset).catch((err: any) => {
+          StudioNotifier.error('Audio Playback Error', err?.message || String(err));
+        });
+      } else if (this.editorTextarea.value.trim()) {
         void this.synthesizeAndPlay(true, false);
+      } else {
+        StudioNotifier.info('Open a .music or .sfx file or choose a preset first.');
       }
     });
 
@@ -1267,8 +1454,12 @@ export class SoundStudioUI {
     window.addEventListener('pointercancel', () => {
       this.sliderDragSnapshotTaken = false;
     });
+    window.addEventListener('studio-theme-change', () => {
+      this.drawVisualizerFrame();
+    });
 
     this.rootEl.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (this.rootEl.classList.contains('hidden')) return;
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT')) {
         if ((target as HTMLInputElement).type === 'text' || target.tagName === 'TEXTAREA') {
@@ -1300,22 +1491,10 @@ export class SoundStudioUI {
       }
     });
 
-    this.rootEl.querySelector('#btn-sound-new-sfx')?.addEventListener('click', () => {
-      this.closePopover('#sound-new-menu');
-      this.loadTemplate('sfx');
-    });
-
-    this.rootEl.querySelector('#btn-sound-new-music')?.addEventListener('click', () => {
-      this.closePopover('#sound-new-menu');
-      this.loadTemplate('music');
-    });
-
     const setAppleEngine = (useApple: boolean) => {
       if (this.useAppleSynth === useApple) return;
       this.recordHistoryBeforeChange();
       this.useAppleSynth = useApple;
-      this.engineYmBtn.classList.toggle('active', !useApple);
-      this.engineAppleBtn.classList.toggle('active', useApple);
       this.musicBankChipBtn.classList.toggle('active', !useApple);
       this.musicBankAppleBtn.classList.toggle('active', useApple);
       this.dslDirty = true;
@@ -1325,10 +1504,15 @@ export class SoundStudioUI {
       }
     };
 
-    this.engineYmBtn.addEventListener('click', () => setAppleEngine(false));
-    this.engineAppleBtn.addEventListener('click', () => setAppleEngine(true));
     this.musicBankChipBtn.addEventListener('click', () => setAppleEngine(false));
     this.musicBankAppleBtn.addEventListener('click', () => setAppleEngine(true));
+
+    this.modeGuiBtn.addEventListener('click', () => this.switchEditorMode('gui'));
+    this.modeTextBtn.addEventListener('click', () => this.switchEditorMode('text'));
+
+    this.statusPillBtn.addEventListener('click', () => {
+      this.switchEditorMode(this.editorMode === 'gui' ? 'text' : 'gui');
+    });
 
     this.vizWaveformBtn.addEventListener('click', () => {
       this.visualizerMode = 'waveform';
@@ -1345,6 +1529,9 @@ export class SoundStudioUI {
     });
 
     this.saveBtnEl.addEventListener('click', () => void this.saveCurrentFile());
+    this.rootEl
+      .querySelector('#btn-save-raw-dsl')
+      ?.addEventListener('click', () => void this.saveCurrentFile());
     this.exportBtnEl.addEventListener('click', () => void this.exportCurrentWav());
 
     this.rootEl.querySelector('#btn-apply-raw-dsl')?.addEventListener('click', () => {
@@ -1455,7 +1642,9 @@ export class SoundStudioUI {
       this.playOffsetSec = targetSec;
       this.updateTimeReadout(targetSec, this.decodedBuffer.duration);
       if (this.isPlaying) {
-        void this.startBufferPlayback(targetSec);
+        this.startBufferPlayback(targetSec).catch((err: any) => {
+          StudioNotifier.error('Audio Playback Error', err?.message || String(err));
+        });
       } else {
         this.drawVisualizerFrame();
       }
@@ -1463,7 +1652,9 @@ export class SoundStudioUI {
 
     this.canvasEl.addEventListener('click', (e) => {
       if (!this.decodedBuffer) {
-        void this.synthesizeAndPlay(true, false);
+        if (this.editorTextarea.value.trim()) {
+          void this.synthesizeAndPlay(true, false);
+        }
         return;
       }
       const rect = this.canvasEl.getBoundingClientRect();
@@ -1471,7 +1662,9 @@ export class SoundStudioUI {
       const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
       const targetSec = ratio * this.decodedBuffer.duration;
       this.playOffsetSec = targetSec;
-      void this.startBufferPlayback(targetSec);
+      this.startBufferPlayback(targetSec).catch((err: any) => {
+        StudioNotifier.error('Audio Playback Error', err?.message || String(err));
+      });
     });
 
     this.sendChatBtnEl.addEventListener('click', () => void this.sendToChat());
@@ -1483,60 +1676,30 @@ export class SoundStudioUI {
     });
   }
 
-  private closePopover(selector: string): void {
-    const el = this.rootEl.querySelector(selector) as any;
-    if (el && typeof el.hidePopover === 'function') {
-      try {
-        el.hidePopover();
-      } catch {
-        // Ignore if not open
-      }
-    }
+  private static isSupportedSoundFile(filePath: string): boolean {
+    const lower = (filePath || '').trim().toLowerCase();
+    return lower.endsWith('.music') || lower.endsWith('.sfx');
   }
 
   private async initializeStudio(): Promise<void> {
-    this.setDslContent(DEFAULT_SFX_DSL, 'laser_arcade.sfx', '', 'sfx');
+    this.activeFilePath = '';
+    this.activeFileName = '';
+    this.editorTextarea.value = '';
+    this.dslDirty = false;
+    this.updateActiveFileLabel();
+    this.syncModeTabsUI();
+    this.syncEditorModeUI();
     this.resetHistoryBaseline();
     this.drawVisualizerFrame();
 
-    await Promise.all([this.refreshPresetsCatalog(), this.refreshFilesCatalog()]);
+    await syncWorkspaceFromHost();
+    await this.refreshPresetsCatalog();
 
     const params = new URLSearchParams(window.location.search);
-    const fileParam = params.get('file') || params.get('path') || params.get('uri');
-    if (fileParam && fileParam.trim()) {
-      await this.loadFileFromPath(fileParam.trim(), true);
-      return;
-    }
-
-    const firstSfx =
-      this.catalog.sfxLibrary.find((f) => f.name === 'laser_arcade.sfx') ||
-      this.catalog.sfxLibrary[0];
-    if (firstSfx) {
-      await this.loadFileFromPath(firstSfx.path || firstSfx.filePath || '', false);
+    const fileParam = (params.get('file') || params.get('path') || params.get('uri') || '').trim();
+    if (fileParam && SoundStudioUI.isSupportedSoundFile(fileParam)) {
+      await this.loadFileFromPath(fileParam, false);
       await this.synthesizeAndPlay(false, false);
-    } else {
-      await this.synthesizeAndPlay(false, false);
-    }
-  }
-
-  public async refreshFilesCatalog(): Promise<void> {
-    try {
-      const ws = getWorkspacePath();
-      const query = ws ? `?workspace=${encodeURIComponent(ws)}` : '';
-      const res = await sidecarFetch(`/api/sound/files${query}`, {
-        method: 'GET',
-        cache: 'no-store'
-      });
-      if (!res.ok) return;
-      const data = (await res.json()) as Partial<SoundFilesCatalog>;
-      this.catalog = {
-        workspaceFiles: Array.isArray(data.workspaceFiles) ? data.workspaceFiles : [],
-        sfxLibrary: Array.isArray(data.sfxLibrary) ? data.sfxLibrary : [],
-        musicLibrary: Array.isArray(data.musicLibrary) ? data.musicLibrary : []
-      };
-      this.renderFileSelectOptions();
-    } catch {
-      // Ignore catalog fetch error
     }
   }
 
@@ -1554,56 +1717,6 @@ export class SoundStudioUI {
     } catch {
       // Keep fallback presets
     }
-  }
-
-  private renderFileSelectOptions(): void {
-    const isMusic = this.activeDocType === 'music';
-    const placeholder = isMusic ? 'Select music track...' : 'Select sound effect...';
-    const groups: string[] = [`<option value="">${placeholder}</option>`];
-
-    const matchingWorkspaceFiles = this.catalog.workspaceFiles.filter((f) => {
-      const p = (f.name || f.path || f.filePath || '').toLowerCase();
-      if (isMusic) {
-        return f.type === 'music' || p.endsWith('.music');
-      }
-      return f.type === 'sfx' || p.endsWith('.sfx');
-    });
-
-    if (matchingWorkspaceFiles.length > 0) {
-      const items = matchingWorkspaceFiles
-        .map((f) => {
-          const p = f.path || f.filePath || '';
-          const selected = p === this.activeFilePath ? 'selected' : '';
-          return `<option value="${this.escapeHtml(p)}" ${selected}>${this.escapeHtml(f.title || f.name)}</option>`;
-        })
-        .join('');
-      const groupLabel = isMusic ? 'Project Music' : 'Project SFX';
-      groups.push(`<optgroup label="${groupLabel}">${items}</optgroup>`);
-    }
-
-    if (!isMusic && this.catalog.sfxLibrary.length > 0) {
-      const items = this.catalog.sfxLibrary
-        .map((f) => {
-          const p = f.path || f.filePath || '';
-          const selected = p === this.activeFilePath ? 'selected' : '';
-          return `<option value="${this.escapeHtml(p)}" ${selected}>${this.escapeHtml(f.title || f.name)}</option>`;
-        })
-        .join('');
-      groups.push(`<optgroup label="Sound Effects (${this.catalog.sfxLibrary.length})">${items}</optgroup>`);
-    }
-
-    if (isMusic && this.catalog.musicLibrary.length > 0) {
-      const items = this.catalog.musicLibrary
-        .map((f) => {
-          const p = f.path || f.filePath || '';
-          const selected = p === this.activeFilePath ? 'selected' : '';
-          return `<option value="${this.escapeHtml(p)}" ${selected}>${this.escapeHtml(f.title || f.name)}</option>`;
-        })
-        .join('');
-      groups.push(`<optgroup label="Music Tracks (${this.catalog.musicLibrary.length})">${items}</optgroup>`);
-    }
-
-    this.fileSelectEl.innerHTML = groups.join('');
   }
 
   private saveCurrentModeState(): void {
@@ -1662,8 +1775,6 @@ export class SoundStudioUI {
       this.soloTracks = new Set(saved.soloTracks);
       this.muteTracks = new Set(saved.muteTracks);
       this.useAppleSynth = saved.useAppleSynth;
-      this.engineYmBtn.classList.toggle('active', !saved.useAppleSynth);
-      this.engineAppleBtn.classList.toggle('active', saved.useAppleSynth);
       this.musicBankChipBtn.classList.toggle('active', !saved.useAppleSynth);
       this.musicBankAppleBtn.classList.toggle('active', saved.useAppleSynth);
 
@@ -1681,41 +1792,41 @@ export class SoundStudioUI {
       this.redoStack = saved.redoStack;
       this.sliderDragSnapshotTaken = false;
       this.updateHistoryButtonsUI();
-      this.renderFileSelectOptions();
       await this.synthesizeAndPlay(autoPlay, false);
       return;
     }
 
-    if (targetType === 'music') {
-      const firstMusic =
-        this.catalog.workspaceFiles.find(
-          (f) => f.type === 'music' || (f.name || '').toLowerCase().endsWith('.music')
-        ) || this.catalog.musicLibrary[0];
-      if (firstMusic && (firstMusic.path || firstMusic.filePath)) {
-        await this.loadFileFromPath(firstMusic.path || firstMusic.filePath || '', autoPlay);
-        if (!autoPlay) {
-          await this.synthesizeAndPlay(false, false);
-        }
-        return;
-      }
-      this.loadTemplate('music');
-      return;
-    }
+    this.activeDocType = targetType;
+    this.activeFilePath = '';
+    this.activeFileName = '';
+    this.editorTextarea.value = '';
+    this.decodedBuffer = null;
+    this.dslDirty = false;
+    this.soloTracks.clear();
+    this.muteTracks.clear();
+    this.trackMetaCache.clear();
+    this.trackStemBuffers.clear();
+    this.trackStemPeaks.clear();
+    this.trackStemBaseMeta.clear();
+    this.trackLiveMeta.clear();
+    this.exportWavNeedsResynth = false;
+    this.playOffsetSec = 0;
 
-    const firstSfx =
-      this.catalog.sfxLibrary.find((f) => f.name === 'laser_arcade.sfx') ||
-      this.catalog.sfxLibrary[0];
-    if (firstSfx && (firstSfx.path || firstSfx.filePath)) {
-      await this.loadFileFromPath(firstSfx.path || firstSfx.filePath || '', autoPlay);
-      if (!autoPlay) {
-        await this.synthesizeAndPlay(false, false);
-      }
-      return;
+    this.updateActiveFileLabel();
+    this.syncModeTabsUI();
+    this.syncEditorModeUI();
+    if (targetType === 'music') {
+      this.trackListEl.innerHTML = `<div class="sound-empty-note">Open a .music file via Open File or Open Artifact to inspect and mix tracks.</div>`;
     }
-    this.loadTemplate('sfx');
+    this.resetHistoryBaseline();
+    this.updateTimeReadout(0, 0);
+    this.drawVisualizerFrame();
   }
 
   public async loadFileFromPath(filePath: string, autoPlay = true): Promise<void> {
+    if (!SoundStudioUI.isSupportedSoundFile(filePath)) {
+      return;
+    }
     try {
       const res = await sidecarFetch('/api/sound/file/read', {
         method: 'POST',
@@ -1737,6 +1848,12 @@ export class SoundStudioUI {
       }
       this.stopPlayback();
 
+      // Cancel any in-flight synthesis from a previously selected track so it cannot overwrite the new controls
+      this.synthGenId++;
+      this.isSynthesizing = false;
+      this.pendingSynthRequest = null;
+      this.lastReport = null;
+
       this.soloTracks.clear();
       this.muteTracks.clear();
       this.trackMetaCache.clear();
@@ -1748,7 +1865,6 @@ export class SoundStudioUI {
       this.playOffsetSec = 0;
       this.setDslContent(content, fileName, data.filePath || filePath, detectedType);
       this.resetHistoryBaseline();
-      this.renderFileSelectOptions();
 
       if (autoPlay) {
         await this.synthesizeAndPlay(true, false);
@@ -1758,42 +1874,8 @@ export class SoundStudioUI {
     }
   }
 
-  private loadTemplate(type: 'music' | 'sfx'): void {
-    if (type !== this.activeDocType) {
-      this.saveCurrentModeState();
-    }
-    this.stopPlayback();
-    this.soloTracks.clear();
-    this.muteTracks.clear();
-    this.trackMetaCache.clear();
-    this.trackStemBuffers.clear();
-    this.trackStemPeaks.clear();
-    this.trackStemBaseMeta.clear();
-    this.trackLiveMeta.clear();
-    this.exportWavNeedsResynth = false;
-    this.playOffsetSec = 0;
-    if (type === 'music') {
-      this.setDslContent(DEFAULT_MUSIC_DSL, 'new_song.music', '', 'music');
-    } else {
-      this.setDslContent(DEFAULT_SFX_DSL, 'new_cue.sfx', '', 'sfx');
-    }
-    this.resetHistoryBaseline();
-    this.renderFileSelectOptions();
-    void this.synthesizeAndPlay(true, false);
-  }
-
   private applySfxPreset(presetName: string): void {
     const friendly = FRIENDLY_SFX_PRESETS.find((f) => f.id === presetName);
-    const targetFileName = friendly?.fileName || `${presetName}.sfx`;
-    const libEntry = this.catalog.sfxLibrary.find(
-      (f) => f.name === targetFileName || f.name === `${presetName}.sfx`
-    );
-
-    if (libEntry && (libEntry.path || libEntry.filePath)) {
-      void this.loadFileFromPath(libEntry.path || libEntry.filePath || '', true);
-      return;
-    }
-
     this.recordHistoryBeforeChange();
     const preset = this.sfxPresets.find((p) => p.name === presetName) || FALLBACK_SFX_PRESETS[0];
 
@@ -1822,6 +1904,10 @@ export class SoundStudioUI {
     ].join('\n');
 
     this.editorTextarea.value = dsl;
+    if (!this.activeFilePath) {
+      this.activeFileName = friendly?.fileName || `${preset.name}.sfx`;
+      this.updateActiveFileLabel();
+    }
     this.dslDirty = true;
     this.syncSfxShaperInputs();
     this.updateHistoryButtonsUI();
@@ -1840,10 +1926,9 @@ export class SoundStudioUI {
     this.activeDocType = docType;
     this.dslDirty = true;
 
+    this.updateActiveFileLabel();
     this.syncModeTabsUI();
-    this.sfxShaperPaneEl.classList.toggle('hidden', docType !== 'sfx');
-    this.musicMixerPaneEl.classList.toggle('hidden', docType !== 'music');
-
+    this.syncEditorModeUI();
     this.syncControlsFromDsl(content);
   }
 
@@ -1863,6 +1948,116 @@ export class SoundStudioUI {
       }
     }
     return bpm;
+  }
+
+  public parseMusicTracksFromDsl(dsl: string): SoundTrackReport[] {
+    const instMap = new Map<
+      string,
+      { waveType: string; volume: number; pan: number }
+    >();
+    const trackOrder: string[] = [];
+    const trackMap = new Map<string, SoundTrackReport>();
+
+    const lines = dsl.split('\n');
+    for (const raw of lines) {
+      const cleaned = raw.replace(/#.*$/, '').trim();
+      if (!cleaned) continue;
+
+      const instM = cleaned.match(/^(?:inst|patch)\s+([^\s]+)(?:\s+(.*))?$/i);
+      if (instM) {
+        const instName = instM[1];
+        const attrs = instM[2] || '';
+        const waveMatch = attrs.match(/\bwave=([^\s]+)/i);
+        const gmMatch = attrs.match(/\bgm=([^\s]+)/i);
+        const presetMatch = attrs.match(/\bpreset=([^\s]+)/i);
+        const volMatch = attrs.match(/\b(?:vol|volume)=([0-9.]+)/i);
+        const panMatch = attrs.match(/\bpan=([-+0-9.]+)/i);
+
+        const rawWave = waveMatch
+          ? waveMatch[1]
+          : gmMatch
+            ? gmMatch[1]
+            : presetMatch
+              ? presetMatch[1]
+              : DRUM_WAVE_TYPES.has(instName.toLowerCase())
+                ? instName.toLowerCase()
+                : 'ym2612_brass';
+
+        const archDefaults =
+          WAVE_ARCHETYPE_DEFAULTS[rawWave.toLowerCase()] ||
+          WAVE_ARCHETYPE_DEFAULTS[normalizeMusicWaveId(rawWave)];
+
+        const volume = volMatch
+          ? Number(volMatch[1])
+          : archDefaults?.volume ?? 0.2;
+        const pan = panMatch
+          ? Number(panMatch[1])
+          : archDefaults?.pan ?? 0.0;
+
+        instMap.set(instName, { waveType: rawWave, volume, pan });
+        continue;
+      }
+
+      const trackM = cleaned.match(/^track\s+([^\s:]+)(?:\s+([^\s:]+))?\s*:\s*(.*)$/i);
+      if (trackM) {
+        const trackName = trackM[1];
+        const explicitInst = trackM[2] || '';
+        const body = trackM[3] || '';
+
+        const isDrum =
+          /drum|perc|toms/i.test(trackName) ||
+          DRUM_WAVE_TYPES.has(explicitInst.toLowerCase());
+        const defaultInst = explicitInst || (isDrum ? 'kick' : trackName);
+        const instInfo = instMap.get(defaultInst);
+
+        const rawWave =
+          instInfo?.waveType ||
+          (isDrum ? 'kick' : 'ym2612_brass');
+        const archDefaults =
+          WAVE_ARCHETYPE_DEFAULTS[rawWave.toLowerCase()] ||
+          WAVE_ARCHETYPE_DEFAULTS[normalizeMusicWaveId(rawWave)];
+
+        const volume = instInfo?.volume ?? archDefaults?.volume ?? 0.2;
+        const pan = instInfo?.pan ?? archDefaults?.pan ?? 0.0;
+
+        const tokens = body
+          .trim()
+          .split(/\s+/)
+          .filter(Boolean);
+        let nonRestEvents = 0;
+        for (const tok of tokens) {
+          if (tok === '|' || tok === '-' || /^r(?::.*)?$/i.test(tok)) {
+            continue;
+          }
+          nonRestEvents++;
+        }
+
+        const existing = trackMap.get(trackName);
+        if (existing) {
+          existing.eventCount += nonRestEvents;
+          if (!existing.defaultInst && defaultInst) {
+            existing.defaultInst = defaultInst;
+          }
+          if (instInfo) {
+            existing.waveType = instInfo.waveType;
+            existing.volume = instInfo.volume;
+            existing.pan = instInfo.pan;
+          }
+        } else {
+          trackOrder.push(trackName);
+          trackMap.set(trackName, {
+            name: trackName,
+            defaultInst,
+            waveType: rawWave,
+            volume,
+            pan,
+            eventCount: Math.max(1, nonRestEvents)
+          });
+        }
+      }
+    }
+
+    return trackOrder.map((name) => trackMap.get(name)!);
   }
 
   private syncControlsFromDsl(dsl: string): void {
@@ -1990,6 +2185,27 @@ export class SoundStudioUI {
       const bpm = this.parseMusicBpmFromDsl(dsl);
       this.musicBpmSlider.value = String(Math.max(40, Math.min(220, bpm)));
       this.musicBpmVal.textContent = `${bpm} BPM`;
+
+      if (/^\s*(?:synth|engine)\s+(?:apple|coreaudio)\b/im.test(dsl)) {
+        this.useAppleSynth = true;
+      } else if (/^\s*(?:synth|engine)\s+(?:default|ym2612|chip|chiptune)\b/im.test(dsl)) {
+        this.useAppleSynth = false;
+      }
+      if (this.musicBankChipBtn && this.musicBankAppleBtn) {
+        this.musicBankChipBtn.classList.toggle('active', !this.useAppleSynth);
+        this.musicBankAppleBtn.classList.toggle('active', this.useAppleSynth);
+      }
+
+      const tracks = this.parseMusicTracksFromDsl(dsl);
+      this.trackStemBaseMeta.clear();
+      this.trackLiveMeta.clear();
+      for (const tr of tracks) {
+        const vol = typeof tr.volume === 'number' && tr.volume > 0 ? tr.volume : 0.2;
+        const pan = typeof tr.pan === 'number' ? tr.pan : 0.0;
+        this.trackStemBaseMeta.set(tr.name, { volume: vol, pan });
+        this.trackLiveMeta.set(tr.name, { volume: vol, pan });
+      }
+      this.renderMusicTrackMixer(tracks);
     }
   }
 
@@ -2193,6 +2409,7 @@ export class SoundStudioUI {
     const dsl = this.editorTextarea.value.trim();
     if (!dsl) return;
 
+    const reqGenId = ++this.synthGenId;
     this.isSynthesizing = true;
     this.playBtnEl.disabled = true;
     if (!this.isPlaying) {
@@ -2215,6 +2432,7 @@ export class SoundStudioUI {
       const data = (await res.json().catch(() => ({}))) as Partial<SynthesizeResponse> & {
         error?: string;
       };
+      if (reqGenId !== this.synthGenId) return;
 
       if (data.report) {
         this.lastReport = data.report;
@@ -2229,9 +2447,13 @@ export class SoundStudioUI {
             this.musicBpmSlider.value = String(Math.max(40, Math.min(220, realBpm)));
             this.musicBpmVal.textContent = `${realBpm} BPM`;
           }
+          const reportTracks =
+            data.report.tracks && data.report.tracks.length > 0
+              ? data.report.tracks
+              : this.parseMusicTracksFromDsl(this.editorTextarea.value);
           this.trackStemBaseMeta.clear();
           this.trackLiveMeta.clear();
-          for (const tr of data.report.tracks || []) {
+          for (const tr of reportTracks) {
             const vol = typeof tr.volume === 'number' && tr.volume > 0 ? tr.volume : 0.2;
             const pan = typeof tr.pan === 'number' ? tr.pan : 0.0;
             this.trackStemBaseMeta.set(tr.name, { volume: vol, pan });
@@ -2240,7 +2462,7 @@ export class SoundStudioUI {
           this.syncLiveTrackMetaFromDsl(this.editorTextarea.value);
           this.lastSynthesizedNonMixerDsl = this.stripMixerPropsFromDsl(dsl);
           this.exportWavNeedsResynth = false;
-          this.renderMusicTrackMixer(data.report.tracks || []);
+          this.renderMusicTrackMixer(reportTracks);
         }
       }
 
@@ -2267,8 +2489,10 @@ export class SoundStudioUI {
           `/api/sound/stems?buildId=${encodeURIComponent(data.buildId)}`,
           { method: 'GET', cache: 'no-store' }
         );
+        if (reqGenId !== this.synthGenId) return;
         if (stemsRes.ok) {
           const stemsBuf = await stemsRes.arrayBuffer();
+          if (reqGenId !== this.synthGenId) return;
           audioBuffer = this.decodeStemsBinary(stemsBuf, ctx);
         }
       }
@@ -2280,11 +2504,14 @@ export class SoundStudioUI {
           `/api/sound/wav?buildId=${encodeURIComponent(data.buildId)}`,
           { method: 'GET', cache: 'no-store' }
         );
+        if (reqGenId !== this.synthGenId) return;
         if (!wavRes.ok) {
           throw new Error(`Failed to fetch audio stream (HTTP ${wavRes.status})`);
         }
         const arrayBuf = await wavRes.arrayBuffer();
+        if (reqGenId !== this.synthGenId) return;
         audioBuffer = await ctx.decodeAudioData(arrayBuf.slice(0));
+        if (reqGenId !== this.synthGenId) return;
       }
 
       const prevDuration = this.decodedBuffer?.duration || 0;
@@ -2316,16 +2543,19 @@ export class SoundStudioUI {
         this.drawVisualizerFrame();
       }
     } catch (err: any) {
+      if (reqGenId !== this.synthGenId) return;
       StudioNotifier.error('Audio Synthesis Error', err?.message || String(err));
     } finally {
-      this.isSynthesizing = false;
-      this.playBtnEl.disabled = false;
-      this.playBtnEl.textContent = this.isPlaying ? 'Stop' : 'Play';
+      if (reqGenId === this.synthGenId) {
+        this.isSynthesizing = false;
+        this.playBtnEl.disabled = false;
+        this.playBtnEl.textContent = this.isPlaying ? 'Stop' : 'Play';
 
-      if (this.pendingSynthRequest) {
-        const nextReq = this.pendingSynthRequest;
-        this.pendingSynthRequest = null;
-        void this.synthesizeAndPlay(nextReq.autoPlay, nextReq.preservePlayhead);
+        if (this.pendingSynthRequest) {
+          const nextReq = this.pendingSynthRequest;
+          this.pendingSynthRequest = null;
+          void this.synthesizeAndPlay(nextReq.autoPlay, nextReq.preservePlayhead);
+        }
       }
     }
   }
@@ -2462,7 +2692,7 @@ export class SoundStudioUI {
     for (const [trackName, nodes] of this.activeStemNodes.entries()) {
       const state = this.computeTrackMixerNodesState(trackName);
       const targetChannelCount = state.monoDownmix ? 1 : 2;
-      const targetChannelMode: ChannelCountMode = state.monoDownmix ? 'explicit' : 'max';
+      const targetChannelMode: ChannelCountMode = state.monoDownmix ? 'explicit' : 'clamped-max';
       if (nodes.pan.channelCount !== targetChannelCount) {
         nodes.pan.channelCount = targetChannelCount;
         nodes.pan.channelCountMode = targetChannelMode;
@@ -2534,28 +2764,37 @@ export class SoundStudioUI {
         const instLine = instLineMatch ? instLineMatch[1] : '';
 
         const waveMatch = instLine.match(/\bwave=([^\s]+)/i);
+        const gmMatch = instLine.match(/\bgm=([^\s]+)/i);
+        const presetMatch = instLine.match(/\bpreset=([^\s]+)/i);
         const volMatch = instLine.match(/\b(?:vol|volume)=([0-9.]+)/i);
         const panMatch = instLine.match(/\bpan=([-+0-9.]+)/i);
 
         const rawWave = waveMatch
           ? waveMatch[1]
-          : tr.eventCount > 0 && tr.waveType
-            ? tr.waveType
-            : cached?.waveType || tr.waveType || 'ym2612_brass';
+          : gmMatch
+            ? gmMatch[1]
+            : presetMatch
+              ? presetMatch[1]
+              : tr.eventCount > 0 && tr.waveType
+                ? tr.waveType
+                : cached?.waveType || tr.waveType || 'ym2612_brass';
 
         const currentInstId = normalizeMusicWaveId(rawWave);
+        const archDefaults =
+          WAVE_ARCHETYPE_DEFAULTS[rawWave.toLowerCase()] ||
+          WAVE_ARCHETYPE_DEFAULTS[currentInstId];
 
         const realVol = volMatch
           ? Number(volMatch[1])
           : tr.eventCount > 0 && tr.volume > 0
             ? tr.volume
-            : cached?.volume ?? tr.volume ?? 0.2;
+            : archDefaults?.volume ?? cached?.volume ?? tr.volume ?? 0.2;
 
         const realPan = panMatch
           ? Number(panMatch[1])
-          : tr.eventCount > 0
+          : tr.eventCount > 0 && typeof tr.pan === 'number' && tr.pan !== 0
             ? tr.pan
-            : cached?.pan ?? tr.pan ?? 0.0;
+            : archDefaults?.pan ?? cached?.pan ?? tr.pan ?? 0.0;
 
         const volPct = Math.round(Math.max(1, Math.min(100, realVol * 100)));
         const panVal = Math.round(Math.max(-100, Math.min(100, realPan * 100)));
@@ -2934,7 +3173,7 @@ export class SoundStudioUI {
 
         gainNode.gain.value = state.gain;
         panNode.channelCount = state.monoDownmix ? 1 : 2;
-        panNode.channelCountMode = state.monoDownmix ? 'explicit' : 'max';
+        panNode.channelCountMode = state.monoDownmix ? 'explicit' : 'clamped-max';
         panNode.pan.value = state.pan;
 
         src.connect(gainNode);
@@ -3086,6 +3325,46 @@ export class SoundStudioUI {
     }
   }
 
+  private getVisualizerThemePalette(): {
+    isLight: boolean;
+    surfaceBg: string;
+    gridLine: string;
+    waveFill: string;
+    waveStroke: string;
+    liveTrace: string;
+    playhead: string;
+    bassZoneFill: string;
+    bassBar: string;
+    highBar: string;
+  } {
+    const computed =
+      typeof window !== 'undefined' && typeof getComputedStyle === 'function'
+        ? getComputedStyle(this.rootEl)
+        : null;
+    const rawSurface = computed?.getPropertyValue('--studio-surface').trim() || '';
+    const rawBg = computed?.getPropertyValue('--studio-bg').trim() || '';
+    const docLight =
+      typeof document !== 'undefined' &&
+      document.documentElement?.classList.contains('light');
+    const isLight =
+      docLight ||
+      /^#(f|e|d)/i.test(rawSurface) ||
+      /^#(f|e|d)/i.test(rawBg);
+
+    return {
+      isLight,
+      surfaceBg: rawSurface || (isLight ? '#FFFFFF' : '#121824'),
+      gridLine: isLight ? 'rgba(100, 116, 139, 0.22)' : 'rgba(148, 163, 184, 0.14)',
+      waveFill: isLight ? 'rgba(79, 70, 229, 0.28)' : 'rgba(99, 102, 241, 0.32)',
+      waveStroke: isLight ? 'rgba(79, 70, 229, 0.85)' : 'rgba(129, 140, 248, 0.9)',
+      liveTrace: isLight ? '#0284c7' : '#38bdf8',
+      playhead: isLight ? '#d97706' : '#f59e0b',
+      bassZoneFill: isLight ? 'rgba(5, 150, 105, 0.08)' : 'rgba(16, 185, 129, 0.08)',
+      bassBar: isLight ? '#059669' : '#10b981',
+      highBar: isLight ? '#4f46e5' : '#6366f1'
+    };
+  }
+
   private drawVisualizerFrame(): void {
     const canvas = this.canvasEl;
     if (!canvas) return;
@@ -3094,19 +3373,27 @@ export class SoundStudioUI {
 
     const w = canvas.width;
     const h = canvas.height;
+    const palette = this.getVisualizerThemePalette();
     ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = palette.surfaceBg;
+    ctx.fillRect(0, 0, w, h);
 
     if (this.visualizerMode === 'spectrum') {
-      this.drawSpectrumView(ctx, w, h);
+      this.drawSpectrumView(ctx, w, h, palette);
     } else {
-      this.drawWaveformView(ctx, w, h);
+      this.drawWaveformView(ctx, w, h, palette);
     }
   }
 
-  private drawWaveformView(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+  private drawWaveformView(
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    palette = this.getVisualizerThemePalette()
+  ): void {
     const midY = h / 2;
 
-    ctx.strokeStyle = 'rgba(148, 163, 184, 0.14)';
+    ctx.strokeStyle = palette.gridLine;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(0, midY);
@@ -3114,7 +3401,7 @@ export class SoundStudioUI {
     ctx.stroke();
 
     if (this.activeDocType === 'music' && this.trackStemPeaks.size > 0) {
-      ctx.fillStyle = 'rgba(99, 102, 241, 0.32)';
+      ctx.fillStyle = palette.waveFill;
       const activeTracks: Array<{ peaks: Float32Array; scale: number }> = [];
       for (const [trackName, peaks] of this.trackStemPeaks.entries()) {
         const state = this.computeTrackMixerNodesState(trackName);
@@ -3146,8 +3433,8 @@ export class SoundStudioUI {
       const totalSamples = ch0.length;
       const step = Math.max(1, Math.floor(totalSamples / w));
 
-      ctx.fillStyle = 'rgba(99, 102, 241, 0.32)';
-      ctx.strokeStyle = 'rgba(129, 140, 248, 0.9)';
+      ctx.fillStyle = palette.waveFill;
+      ctx.strokeStyle = palette.waveStroke;
       ctx.lineWidth = 1.25;
       ctx.beginPath();
 
@@ -3167,7 +3454,7 @@ export class SoundStudioUI {
       const timeData = new Uint8Array(this.analyser.fftSize);
       this.analyser.getByteTimeDomainData(timeData);
 
-      ctx.strokeStyle = '#38bdf8';
+      ctx.strokeStyle = palette.liveTrace;
       ctx.lineWidth = 2;
       ctx.beginPath();
       const sliceWidth = w / timeData.length;
@@ -3185,7 +3472,7 @@ export class SoundStudioUI {
     if (this.decodedBuffer && this.decodedBuffer.duration > 0) {
       const curSec = this.getCurrentPlayheadSec();
       const playX = Math.max(0, Math.min(w, (curSec / this.decodedBuffer.duration) * w));
-      ctx.strokeStyle = '#f59e0b';
+      ctx.strokeStyle = palette.playhead;
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(playX, 0);
@@ -3194,10 +3481,15 @@ export class SoundStudioUI {
     }
   }
 
-  private drawSpectrumView(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+  private drawSpectrumView(
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    palette = this.getVisualizerThemePalette()
+  ): void {
     const bassRatio = 0.24;
     const bassMaxX = Math.floor(w * bassRatio);
-    ctx.fillStyle = 'rgba(16, 185, 129, 0.08)';
+    ctx.fillStyle = palette.bassZoneFill;
     ctx.fillRect(0, 0, bassMaxX, h);
 
     if (this.analyser && this.isPlaying) {
@@ -3217,48 +3509,30 @@ export class SoundStudioUI {
         const x = i * barWidth;
         const y = h - barH;
 
-        ctx.fillStyle = x < bassMaxX ? '#10b981' : '#6366f1';
+        ctx.fillStyle = x < bassMaxX ? palette.bassBar : palette.highBar;
         ctx.fillRect(x + 1, y, Math.max(2, barWidth - 2), barH);
       }
     }
   }
 
-  private async saveCurrentFile(): Promise<void> {
-    const content = this.editorTextarea.value;
-    if (!content.trim()) return;
-
-    let targetPath = this.activeFilePath;
-    if (!targetPath) {
-      const ws = getWorkspacePath() || '';
-      const defaultPath = ws ? `${ws.replace(/\/+$/, '')}/${this.activeFileName}` : this.activeFileName;
-      const prompted = window.prompt('Save file path:', defaultPath);
-      if (!prompted || !prompted.trim()) return;
-      targetPath = prompted.trim();
-    }
-
-    this.saveBtnEl.disabled = true;
-    try {
-      const res = await sidecarFetch('/api/sound/file/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filePath: targetPath, content })
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data.error || `Failed to save (HTTP ${res.status})`);
-      }
-      this.activeFilePath = data.filePath || targetPath;
-      this.activeFileName = this.activeFilePath.split(/[\\/]/).pop() || this.activeFileName;
-      StudioNotifier.success(`Saved ${this.activeFileName}`);
-      await this.refreshFilesCatalog();
-    } catch (err: any) {
-      StudioNotifier.error('Save Failed', err?.message || String(err));
-    } finally {
-      this.saveBtnEl.disabled = false;
-    }
+  private getOrDefaultDslText(): string {
+    const current = this.editorTextarea.value.trim();
+    if (current) return this.editorTextarea.value;
+    return this.activeDocType === 'music' ? DEFAULT_MUSIC_DSL : DEFAULT_SFX_DSL;
   }
 
-  private async exportCurrentWav(): Promise<void> {
+  private static arrayBufferToBase64(buffer: ArrayBuffer): string {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const chunk = bytes.subarray(i, i + chunkSize);
+      binary += String.fromCharCode(...chunk);
+    }
+    return btoa(binary);
+  }
+
+  private async synthesizeWavBase64ForExport(): Promise<string> {
     let targetBuildId = this.lastBuildId;
 
     if (
@@ -3267,8 +3541,10 @@ export class SoundStudioUI {
       (this.activeDocType === 'music' &&
         (this.exportWavNeedsResynth || this.soloTracks.size > 0 || this.muteTracks.size > 0))
     ) {
-      const dsl = this.editorTextarea.value.trim();
-      if (!dsl) return;
+      const dsl = this.getOrDefaultDslText().trim();
+      if (!dsl) {
+        throw new Error('No sound or music DSL loaded to synthesize.');
+      }
       const res = await sidecarFetch('/api/sound/synthesize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -3282,26 +3558,189 @@ export class SoundStudioUI {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.buildId) {
-        StudioNotifier.error(
-          'Export Failed',
-          data.error || data.report?.error || 'Could not synthesize WAV for export'
+        throw new Error(
+          data.error || data.report?.error || `Could not synthesize WAV for export (HTTP ${res.status})`
         );
-        return;
       }
       targetBuildId = data.buildId;
+      this.lastBuildId = data.buildId;
       this.exportWavNeedsResynth = false;
     }
 
-    const baseName = this.activeFileName.replace(/\.(music|sfx)$/i, '') || 'sound_export';
-    const wavFileName = `${baseName}.wav`;
+    const wavRes = await sidecarFetch(
+      `/api/sound/wav?buildId=${encodeURIComponent(targetBuildId)}`,
+      { method: 'GET', cache: 'no-store' }
+    );
+    if (!wavRes.ok) {
+      throw new Error(`Failed to fetch synthesized WAV (HTTP ${wavRes.status})`);
+    }
+    const wavBuf = await wavRes.arrayBuffer();
+    return SoundStudioUI.arrayBufferToBase64(wavBuf);
+  }
 
-    const a = document.createElement('a');
-    a.href = `/api/sound/wav?buildId=${encodeURIComponent(targetBuildId)}`;
-    a.download = wavFileName;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    StudioNotifier.success(`Downloaded ${wavFileName}`);
+  private openFileModal(): void {
+    const isMusic = this.activeDocType === 'music';
+    const targetExt = isMusic ? '.music' : '.sfx';
+    const initialDir = this.activeFilePath
+      ? this.activeFilePath.replace(/[\\/][^\\/]+$/, '')
+      : getWorkspacePath() || undefined;
+
+    openStudioFileModal({
+      title: isMusic ? 'Open Song File (.music)' : 'Open Sound FX File (.sfx)',
+      acceptExtensions: [targetExt],
+      filterType: 'sound',
+      initialDirectory: initialDir,
+      onSelectFilePath: async (absPath: string) => {
+        await this.loadFileFromPath(absPath, true);
+      },
+      onSelectLocalFile: async (file: File) => {
+        const fileName = file.name || `untitled${targetExt}`;
+        if (!fileName.toLowerCase().endsWith(targetExt)) {
+          StudioNotifier.error(
+            'Unsupported File Type',
+            `Expected a ${targetExt} file in ${isMusic ? 'Song' : 'SFX'} mode.`
+          );
+          return;
+        }
+        const content = await file.text();
+        this.stopPlayback();
+        this.synthGenId++;
+        this.isSynthesizing = false;
+        this.pendingSynthRequest = null;
+        this.lastReport = null;
+        this.soloTracks.clear();
+        this.muteTracks.clear();
+        this.trackMetaCache.clear();
+        this.trackStemBuffers.clear();
+        this.trackStemPeaks.clear();
+        this.trackStemBaseMeta.clear();
+        this.trackLiveMeta.clear();
+        this.exportWavNeedsResynth = false;
+        this.playOffsetSec = 0;
+        this.setDslContent(content, fileName, '', this.activeDocType);
+        this.resetHistoryBaseline();
+        await this.synthesizeAndPlay(true, false);
+      }
+    });
+  }
+
+  private async loadFromArtifact(artifact: LoadedStudioArtifact): Promise<void> {
+    const ext = (artifact.ext || '').toLowerCase();
+    if (ext !== '.music' && ext !== '.sfx') {
+      StudioNotifier.error(
+        'Unsupported Artifact Type',
+        'Only .music and .sfx artifacts can be opened in the Sound Editor.'
+      );
+      return;
+    }
+
+    const detectedType: 'music' | 'sfx' = ext === '.music' ? 'music' : 'sfx';
+    const content =
+      typeof artifact.text === 'string'
+        ? artifact.text
+        : new TextDecoder('utf-8').decode(artifact.content);
+    if (detectedType !== this.activeDocType) {
+      this.saveCurrentModeState();
+    }
+    this.stopPlayback();
+    this.synthGenId++;
+    this.isSynthesizing = false;
+    this.pendingSynthRequest = null;
+    this.lastReport = null;
+    this.soloTracks.clear();
+    this.muteTracks.clear();
+    this.trackMetaCache.clear();
+    this.trackStemBuffers.clear();
+    this.trackStemPeaks.clear();
+    this.trackStemBaseMeta.clear();
+    this.trackLiveMeta.clear();
+    this.exportWavNeedsResynth = false;
+    this.playOffsetSec = 0;
+    this.setDslContent(content, artifact.displayName || artifact.filename, '', detectedType);
+    this.resetHistoryBaseline();
+    await this.synthesizeAndPlay(true, false);
+  }
+
+  private openArtifactModal(): void {
+    const isMusic = this.activeDocType === 'music';
+    const targetExt = isMusic ? '.music' : '.sfx';
+    const defaultBase = (
+      this.activeFileName || (isMusic ? 'song' : 'sound')
+    ).replace(/\.(music|sfx|wav)$/i, '');
+
+    openStudioArtifactModal({
+      title: isMusic ? 'Song Session Artifacts (.music)' : 'Sound FX Session Artifacts (.sfx)',
+      filterExtensions: [targetExt],
+      defaultSaveName: defaultBase,
+      saveFormats: isMusic
+        ? [{ value: 'music', label: 'Music DSL (.music)' }]
+        : [{ value: 'sfx', label: 'Sound FX DSL (.sfx)' }],
+      onLoadArtifact: async (artifact: LoadedStudioArtifact) => {
+        await this.loadFromArtifact(artifact);
+      },
+      onGetSavePayload: async () => {
+        return { text: this.getOrDefaultDslText(), ext: targetExt };
+      }
+    });
+  }
+
+  private async saveCurrentFile(): Promise<void> {
+    const ext = this.activeDocType === 'music' ? 'music' : 'sfx';
+    const defaultBase = (this.activeFileName || `untitled.${ext}`).replace(
+      /\.(music|sfx|wav)$/i,
+      ''
+    );
+    const initialDir = this.activeFilePath
+      ? this.activeFilePath.replace(/[\\/][^\\/]+$/, '')
+      : getWorkspacePath() || undefined;
+
+    openStudioSaveExportModal({
+      mode: 'save',
+      title: `Save ${this.activeDocType === 'music' ? 'Song (.music)' : 'Sound FX (.sfx)'}`,
+      defaultBasename: defaultBase,
+      initialDirectory: initialDir,
+      initialFormatId: ext,
+      formats:
+        this.activeDocType === 'music'
+          ? [{ id: 'music', label: 'Music DSL (.music)', ext: 'music' }]
+          : [{ id: 'sfx', label: 'Sound FX DSL (.sfx)', ext: 'sfx' }],
+      onGetPayload: async () => ({
+        text: this.getOrDefaultDslText(),
+        mimeType: 'text/plain;charset=utf-8'
+      }),
+      onSaved: (savedPath: string, filename: string) => {
+        this.activeFilePath = savedPath;
+        this.activeFileName = filename;
+        this.updateActiveFileLabel();
+        this.syncEditorModeUI();
+      }
+    });
+  }
+
+  private async exportCurrentWav(): Promise<void> {
+    const defaultBase = (
+      this.activeFileName ||
+      (this.activeDocType === 'music' ? 'song_export' : 'sound_export')
+    ).replace(/\.(music|sfx|wav)$/i, '');
+    const initialDir = this.activeFilePath
+      ? this.activeFilePath.replace(/[\\/][^\\/]+$/, '')
+      : getWorkspacePath() || undefined;
+
+    openStudioSaveExportModal({
+      mode: 'export',
+      title: 'Export Synthesized Audio (.wav)',
+      defaultBasename: defaultBase,
+      initialDirectory: initialDir,
+      initialFormatId: 'wav',
+      formats: [{ id: 'wav', label: 'WAV Audio (.wav)', ext: 'wav' }],
+      onGetPayload: async () => {
+        const base64 = await this.synthesizeWavBase64ForExport();
+        return {
+          base64,
+          mimeType: 'audio/wav'
+        };
+      }
+    });
   }
 
   private async sendToChat(): Promise<void> {
@@ -3311,9 +3750,12 @@ export class SoundStudioUI {
 
     this.sendChatBtnEl.disabled = true;
     try {
-      const fileLabel = this.activeFilePath || this.activeFileName;
+      const fileLabel =
+        this.activeFilePath ||
+        this.activeFileName ||
+        (this.activeDocType === 'music' ? 'Untitled.music' : 'Untitled.sfx');
       const summaryMarkdown = [
-        `### Sound Studio: \`${fileLabel}\``,
+        `### Sound Editor: \`${fileLabel}\``,
         note ? `\n**Request**: ${note}` : '',
         `\n\`\`\`${this.activeDocType}`,
         dsl,

@@ -27,10 +27,6 @@ inst psg_arp_echo   wave=psg_square gm=clavinet pan=0.50 vib=6.2,2.40 lpf=0.44
 inst fm_bass        wave=ym2612_bass gm=electric_bass vol=0.21 adsr=0.002,0.09,0.84,0.04
 inst sub_bass       wave=sub_bass gm=slap_bass_1 vol=0.19 lpf=0.032
 inst kick           wave=kick freq=160Hz->38Hz
-inst snare          wave=snare vol=0.145
-inst tom_hi         wave=tom vol=0.15 freq=220Hz->96Hz
-inst tom_mid        wave=tom vol=0.15 freq=175Hz->74Hz
-inst tom_low        wave=tom vol=0.15 freq=135Hz->50Hz
 
 pattern rest_4bar = R:1 | R:1 | R:1 | R:1
 pattern rest_8bar = R:1 | R:1 | R:1 | R:1 | R:1 | R:1 | R:1 | R:1

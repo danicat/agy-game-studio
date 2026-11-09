@@ -2,22 +2,28 @@
   "command": "node",
   "args": ["main.mjs"],
   "restart_policy": "always",
-  "display_name": "Game Studio",
-  "description": "Ebitengine 2D WASM Playtest Studio & Procedural Audio/Synth Studio.",
+  "display_name": "Game Dev Studio",
+  "description": "Game Dev Studio for Go and Ebitengine with live 60 FPS WASM Playtest tab, Sound Editor (.music & .sfx), and 2D Sprite Editor (.sprite & .aseprite).",
   "has_web_ui": true,
   "ui_config": {
-    "display_name": "Game Studio",
+    "display_name": "Game Dev Studio",
     "views": [
       {
         "path": "/playtest",
         "entrypoint": "SIDECAR_UI_ENTRYPOINT_AUX_PANE",
-        "title": "Playtest Studio"
+        "title": "Game Dev Studio"
       },
       {
         "path": "/sound",
         "entrypoint": "SIDECAR_UI_ENTRYPOINT_AUX_PANE",
-        "title": "Sound Studio",
+        "title": "Game Dev Studio",
         "file_extensions": [".music", ".sfx"]
+      },
+      {
+        "path": "/sprite",
+        "entrypoint": "SIDECAR_UI_ENTRYPOINT_AUX_PANE",
+        "title": "Game Dev Studio",
+        "file_extensions": [".sprite", ".aseprite"]
       }
     ]
   }

@@ -158,17 +158,17 @@ func TestMusicDSLParserAndDriftFreeTiming(t *testing.T) {
 		}
 	}
 
-	// Verify credits_theme.music has 12 tracks, zero drift across 36 bars (90.00s = 15,876,000 bytes),
+	// Verify credits_theme.music has 13 tracks (1:1 with its 13 instruments), zero drift across 36 bars (90.00s = 15,876,000 bytes),
 	// and passes full music-theory and harmonic consonance validation.
 	creditsScore, err := LoadDSLFile("credits_theme.music")
 	if err != nil {
 		t.Fatalf("LoadDSLFile(credits_theme.music) failed: %v", err)
 	}
-	if err := ValidateProductionBGM(creditsScore, 12, 90.0); err != nil {
+	if err := ValidateProductionBGM(creditsScore, 13, 90.0); err != nil {
 		t.Fatalf("ValidateProductionBGM(credits_theme.music) failed: %v", err)
 	}
-	if len(creditsScore.Tracks) != 12 {
-		t.Fatalf("credits_theme.music: expected 12 tracks, got %d", len(creditsScore.Tracks))
+	if len(creditsScore.Tracks) != 13 {
+		t.Fatalf("credits_theme.music: expected 13 tracks, got %d", len(creditsScore.Tracks))
 	}
 	const wantCreditsBytes = 90 * BytesPerSecond // 15,876,000 bytes
 	for _, tr := range creditsScore.Tracks {

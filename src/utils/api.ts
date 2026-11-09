@@ -56,8 +56,57 @@ export interface HealthInfo {
 export interface WorkspaceResolveResult {
   workspace: string;
   pkg: string;
+  packages?: string[];
   projectPath?: string;
   hasGoMod?: boolean;
+}
+
+export interface FsInfoResponse {
+  defaultDir: string;
+  downloadsDir: string;
+  desktopDir: string;
+  homeDir: string;
+  workspaceDir: string;
+  sessionDir: string | null;
+}
+
+export interface FsListDirectoryEntry {
+  name: string;
+  path: string;
+  type: 'directory';
+  hasGoMod: boolean;
+}
+
+export interface FsListFileEntry {
+  name: string;
+  path: string;
+  filePath: string;
+  ext: string;
+  type: string;
+  size: number;
+  modifiedTime: number;
+}
+
+export interface FsListResponse {
+  dir: string;
+  parentDir: string | null;
+  filter: string;
+  directories: FsListDirectoryEntry[];
+  files: FsListFileEntry[];
+  hasGoMod: boolean;
+  packages: string[];
+  defaultPkg: string;
+}
+
+export interface SessionArtifactItem {
+  filename: string;
+  relativePath: string;
+  name: string;
+  displayName: string;
+  source: string;
+  size: number;
+  modifiedTime: number;
+  ext: string;
 }
 
 export interface BuildWasmSuccess {
@@ -196,7 +245,37 @@ export function getInitialSessionId(): string {
     }
   }
 
+  const fileParam = (params.get('file') || params.get('path'))?.trim();
+  if (fileParam) {
+    const brainMatch = fileParam.replace(/\\/g, '/').match(/\/brain\/([a-zA-Z0-9_-]{1,128})\//);
+    if (
+      brainMatch &&
+      brainMatch[1] !== 'tempmediaStorage' &&
+      VALID_SESSION_ID_REGEX.test(brainMatch[1])
+    ) {
+      return brainMatch[1];
+    }
+  }
+
   return '';
+}
+
+/**
+ * Resolve the conversation's active workspace folder URIs (`file://...`) from the host bridge.
+ */
+export async function getWorkspaceUris(): Promise<string[]> {
+  if (window.sidecar && typeof window.sidecar.getWorkspaceUris === 'function') {
+    try {
+      const uris = await Promise.race([
+        window.sidecar.getWorkspaceUris(),
+        new Promise<string[]>((resolve) => setTimeout(() => resolve([]), 1000)),
+      ]);
+      return Array.isArray(uris) ? uris : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
 }
 
 export function getActiveSessionId(): string {
@@ -349,6 +428,89 @@ export async function fetchHealth(): Promise<HealthInfo> {
     setWorkspacePath(data.defaultWorkspace);
   }
   return data;
+}
+
+let hostWorkspaceListenerBound = false;
+let hostWorkspaceSyncPromise: Promise<string> | null = null;
+
+/**
+ * Resolves and synchronizes the active project workspace root across all Studio tabs
+ * (`Playtest`, `Sound`, and `Sprites`). Prioritizes `window.sidecar.getWorkspaceUris()`
+ * and falls back to `/api/health`'s `defaultWorkspace`.
+ */
+export async function syncWorkspaceFromHost(): Promise<string> {
+  if (window.sidecar?.conversationId && !getSessionId()) {
+    try {
+      setSessionId(window.sidecar.conversationId);
+    } catch {
+      // Ignore invalid conversationId format
+    }
+  }
+
+  if (
+    !hostWorkspaceListenerBound &&
+    window.sidecar &&
+    typeof window.sidecar.onWorkspaceChange === 'function'
+  ) {
+    hostWorkspaceListenerBound = true;
+    window.sidecar.onWorkspaceChange((uris: string[]) => {
+      if (Array.isArray(uris) && uris.length > 0 && uris[0]) {
+        void resolveWorkspaceUri(uris[0])
+          .then((resolved) => {
+            if (resolved.workspace) {
+              setWorkspacePath(resolved.workspace);
+            }
+          })
+          .catch(() => {});
+      }
+    });
+  }
+
+  if (hostWorkspaceSyncPromise) {
+    return hostWorkspaceSyncPromise;
+  }
+
+  hostWorkspaceSyncPromise = (async () => {
+    let resolvedFromBridge = false;
+    if (window.sidecar && typeof window.sidecar.getWorkspaceUris === 'function') {
+      try {
+        const uris = await Promise.race([
+          window.sidecar.getWorkspaceUris(),
+          new Promise<string[]>((resolve) => setTimeout(() => resolve([]), 1200)),
+        ]);
+        if (Array.isArray(uris) && uris.length > 0 && uris[0]) {
+          const resolved = await resolveWorkspaceUri(uris[0]);
+          if (resolved.workspace) {
+            setWorkspacePath(resolved.workspace);
+            resolvedFromBridge = true;
+          }
+        }
+      } catch {
+        // Proceed to health fallback
+      }
+    }
+
+    try {
+      const health = await fetchHealth();
+      if (health.activeSessionId && !getSessionId()) {
+        setSessionId(health.activeSessionId);
+      }
+      if (!resolvedFromBridge && !getWorkspacePath() && health.defaultWorkspace) {
+        const resolved = await resolveWorkspaceUri(health.defaultWorkspace);
+        if (resolved.workspace) {
+          setWorkspacePath(resolved.workspace);
+        }
+      }
+    } catch {
+      // Ignore health check errors in standalone dev mode
+    }
+
+    return getWorkspacePath();
+  })().finally(() => {
+    hostWorkspaceSyncPromise = null;
+  });
+
+  return hostWorkspaceSyncPromise;
 }
 
 /**
@@ -544,3 +706,129 @@ export async function sendBuildErrorToChat(
 
   return data as SendToChatResponse;
 }
+
+/**
+ * Fetch filesystem directory defaults (`defaultDir`, `workspaceDir`, `downloadsDir`, `desktopDir`, `sessionDir`).
+ */
+export async function fetchFsInfo(sessionId?: string | null): Promise<FsInfoResponse> {
+  const workspaceUris = await getWorkspaceUris();
+  const query = new URLSearchParams();
+  const sid = sessionId ?? getSessionId();
+  if (sid) {
+    query.set('session_id', sid);
+  }
+  if (workspaceUris.length > 0 && workspaceUris[0]) {
+    query.set('workspace_uri', workspaceUris[0]);
+  } else if (getWorkspacePath()) {
+    query.set('workspace', getWorkspacePath());
+  }
+  const qs = query.toString();
+  const res = await sidecarFetch(`/api/fs/info${qs ? `?${qs}` : ''}`, {
+    method: 'GET',
+    cache: 'no-store',
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || `Failed to fetch filesystem info: HTTP ${res.status}`);
+  }
+  return (await res.json()) as FsInfoResponse;
+}
+
+/**
+ * List immediate subdirectories and matching files in `dir` via `/api/fs/list`.
+ */
+export async function fetchFsList(
+  dir: string,
+  filter: 'sound' | 'sprite' | 'project' | 'all' = 'all',
+  extensions?: string[]
+): Promise<FsListResponse> {
+  const query = new URLSearchParams();
+  if (dir && dir.trim()) {
+    query.set('dir', dir.trim());
+  }
+  query.set('filter', filter);
+  if (extensions && extensions.length > 0) {
+    query.set('extensions', extensions.join(','));
+  }
+  const res = await sidecarFetch(`/api/fs/list?${query.toString()}`, {
+    method: 'GET',
+    cache: 'no-store',
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || `Failed to list directory "${dir}": HTTP ${res.status}`);
+  }
+  return (await res.json()) as FsListResponse;
+}
+
+/**
+ * Discover runnable Go main packages inside `dir` for the Playtest project picker.
+ */
+export async function fetchPackages(dir: string): Promise<{
+  workspace: string;
+  pkg: string;
+  packages: string[];
+  hasGoMod: boolean;
+}> {
+  const list = await fetchFsList(dir, 'project');
+  return {
+    workspace: list.dir || dir,
+    pkg: list.defaultPkg || '.',
+    packages: Array.isArray(list.packages) && list.packages.length > 0 ? list.packages : ['.'],
+    hasGoMod: Boolean(list.hasGoMod),
+  };
+}
+
+/**
+ * Save a file (either base64 binary `data` or UTF-8 `text`) to the filesystem via `/api/fs/save`.
+ */
+export async function saveToFilesystem(params: {
+  directory?: string;
+  filename?: string;
+  filePath?: string;
+  data?: string;
+  text?: string;
+  workspaceUris?: string[];
+}): Promise<{ success: boolean; filename: string; path: string; size: number }> {
+  const workspaceUris = params.workspaceUris ?? (await getWorkspaceUris());
+  const res = await sidecarFetch('/api/fs/save', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      directory: params.directory,
+      filename: params.filename,
+      filePath: params.filePath,
+      data: params.data,
+      text: params.text,
+      workspaceUris,
+    }),
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || `Failed to save file to filesystem: HTTP ${res.status}`);
+  }
+  return await res.json();
+}
+
+/**
+ * Read a file from the filesystem via `/api/fs/open?file=...&format=json`.
+ */
+export async function openFromFilesystem(filePath: string): Promise<{
+  path: string;
+  fileName: string;
+  ext: string;
+  size: number;
+  text?: string;
+  base64: string;
+}> {
+  const res = await sidecarFetch(
+    `/api/fs/open?file=${encodeURIComponent(filePath)}&format=json`,
+    { method: 'GET', cache: 'no-store' }
+  );
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || `Failed to open file "${filePath}": HTTP ${res.status}`);
+  }
+  return await res.json();
+}
+
