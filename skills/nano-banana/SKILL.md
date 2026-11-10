@@ -23,8 +23,9 @@ metadata:
 Generate, edit, and iterate on visual assets conversationally using Google's **Nano Banana** image generation models (`gemini-nano-banana-2.1`, `gemini-3.1-flash-lite-image`, `gemini-3.1-flash-image`, `gemini-3-pro-image`) via **`uv run skills/nano-banana/scripts/banana.py`** (which supports both **Vertex AI / Gemini Enterprise** Application Default Credentials and `GEMINI_API_KEY`), the **`gemini-api` CLI** (`gemini-api image`), or the **Google Gen AI SDKs**.
 
 > [!CAUTION]
-> **Fail Fast with Zero Fallbacks on Authentication or Tool Failure**:
-> Never go rogue if `gemini-api` or `scripts/banana.py` fails. If `gemini-api` is unavailable or fails because only Vertex AI / Gemini Enterprise credentials are configured, run `uv run skills/nano-banana/scripts/banana.py` with Vertex AI / Application Default Credentials (`GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`, and `gcloud auth application-default login`). If authentication still fails, **stop immediately**, report the exact authentication error to the user, and ask them to configure credentials (`gcloud auth application-default login` + `export GOOGLE_CLOUD_PROJECT=...`, or `export GEMINI_API_KEY=...`). Never fabricate placeholder images, switch to unauthorized fallback generators, or silently bypass errors.
+> **Fail Fast with Zero Fallbacks & Always Default to `global` Location**:
+> - **Always default to the `global` location**: When running Vertex AI / Gemini Enterprise workflows (`scripts/banana.py` or `google-genai` SDK), always default to `location="global"` (`GOOGLE_CLOUD_LOCATION="global"` / `--location global`) unless the user explicitly says otherwise.
+> - **Never go rogue if `gemini-api` or `scripts/banana.py` fails**: If `gemini-api` is unavailable or fails because only Vertex AI / Gemini Enterprise credentials are configured, run `uv run skills/nano-banana/scripts/banana.py` with Vertex AI / Application Default Credentials (`GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION="global"`, and `gcloud auth application-default login --billing-project YOUR_PROJECT_ID`). If authentication still fails, **stop immediately**, report the exact authentication error to the user, and ask them to configure credentials (`gcloud auth application-default login --billing-project YOUR_PROJECT_ID` + `export GOOGLE_CLOUD_PROJECT=...`, or `export GEMINI_API_KEY=...`). Never fabricate placeholder images, switch to unauthorized fallback generators, or silently bypass errors.
 
 ---
 
@@ -43,10 +44,11 @@ Generate, edit, and iterate on visual assets conversationally using Google's **N
 
 ```bash
 # 1. Authenticate with Vertex AI / Gemini Enterprise (Application Default Credentials)
-gcloud auth application-default login
-export GOOGLE_CLOUD_PROJECT="your-gcp-project-id"
-export GOOGLE_CLOUD_LOCATION="us-central1"
-# (Or pass per-command: --vertexai --project "your-gcp-project-id" --location "us-central1")
+# Always default to the 'global' location unless the user explicitly specifies another region.
+gcloud auth application-default login --billing-project YOUR_PROJECT_ID
+export GOOGLE_CLOUD_PROJECT="YOUR_PROJECT_ID"
+export GOOGLE_CLOUD_LOCATION="global"
+# (Or pass per-command: --vertexai --project "YOUR_PROJECT_ID" --location "global")
 
 # 2. Or authenticate with the Gemini Developer API (API Key)
 export GEMINI_API_KEY="your-api-key"
@@ -216,7 +218,7 @@ uv run skills/nano-banana/scripts/banana.py \
   --thinking-level "medium" \
   --image-search
 
-# Explicit Vertex AI / Gemini Enterprise execution using Application Default Credentials
+# Explicit Vertex AI / Gemini Enterprise execution using Application Default Credentials (defaults to 'global')
 uv run skills/nano-banana/scripts/banana.py \
   -p "A minimalist flat illustration of a potion bottle icon on a dark UI card" \
   -f "potion_icon_lite.png" \
@@ -224,7 +226,7 @@ uv run skills/nano-banana/scripts/banana.py \
   -a "1:1" \
   --vertexai \
   --project "$GOOGLE_CLOUD_PROJECT" \
-  --location "${GOOGLE_CLOUD_LOCATION:-us-central1}"
+  --location "${GOOGLE_CLOUD_LOCATION:-global}"
 
 # Studio-quality 4K key art with Nano Banana Pro and Google Web Search grounding
 uv run skills/nano-banana/scripts/banana.py \
@@ -267,7 +269,7 @@ uv run skills/nano-banana/scripts/banana.py \
 - `--api`: `interactions` (default, Interactions API) or `models` (`generate_content`).
 - `--vertexai`: Force Vertex AI / Gemini Enterprise authentication via Application Default Credentials.
 - `--project`: Google Cloud Project ID for Vertex AI (defaults to `GOOGLE_CLOUD_PROJECT` or `GCP_PROJECT`).
-- `--location`: Google Cloud Location for Vertex AI (defaults to `GOOGLE_CLOUD_LOCATION` or `us-central1`).
+- `--location`: Google Cloud Location for Vertex AI (defaults to `global` or `GOOGLE_CLOUD_LOCATION`; always use `global` unless the user explicitly specifies otherwise).
 - `--dry-run`: Validate model capabilities and CLI arguments without calling the API.
 
 ---
@@ -318,7 +320,7 @@ Best for multi-turn editing, search grounding, controllable thinking, and statef
 import base64
 from google import genai
 
-# Automatically uses GEMINI_API_KEY, or pass vertexai=True, project=..., location=... for Vertex AI
+# Automatically uses GEMINI_API_KEY, or pass vertexai=True, project=..., location="global" for Vertex AI
 client = genai.Client()
 
 # Text-to-Image Generation with Nano Banana 2.1, 4K Resolution, Medium Thinking & Search Grounding

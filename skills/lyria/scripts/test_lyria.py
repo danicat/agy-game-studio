@@ -33,6 +33,7 @@ def test_lyria_help():
     assert "--vertexai" in result.stdout
     assert "--project" in result.stdout
     assert "--location" in result.stdout
+    assert "global" in result.stdout
     print("Test passed: lyria.py --help includes all expected flags and model aliases.")
 
 

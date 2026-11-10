@@ -298,6 +298,37 @@ process.stdout.write('ok\\n');
     assert.ok(capturedErr.args[3].includes('### 🚨 Ebitengine WASM Build Error'));
     assert.ok(capturedErr.args[3].includes('undefined: ebiten.RunGame'));
 
+    // 4. Valid studioError payload (from "💬 Send to Agent" button on error toast)
+    const studioErrRes = await fetch(`${baseUrl}/api/send-to-chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_id: testSessionId,
+        workspace: '/path/to/game',
+        errorTitle: 'DSL Compile Error',
+        studioError: 'open sprite sheet "minotaur_boss.png": no such file or directory',
+        metadata: {
+          workspace: '/path/to/game',
+          tab: 'Sprites',
+          filePath: '/path/to/game/minotaur_boss.sprite',
+        },
+      }),
+    });
+
+    assert.equal(studioErrRes.status, 200);
+    const studioErrData = await studioErrRes.json();
+    assert.equal(studioErrData.success, true);
+    assert.equal(studioErrData.mode, 'studio-error');
+
+    const capturedStudioErr = JSON.parse(fs.readFileSync(agentApiCaptureFile, 'utf-8'));
+    assert.equal(capturedStudioErr.args[0], 'send-message');
+    assert.equal(capturedStudioErr.args[1], '--title=Studio Error: DSL Compile Error');
+    assert.equal(capturedStudioErr.args[2], testSessionId);
+    assert.ok(capturedStudioErr.args[3].includes('### ⚠️ Game Dev Studio Error: DSL Compile Error'));
+    assert.ok(capturedStudioErr.args[3].includes('**Tab**: `Sprites`'));
+    assert.ok(capturedStudioErr.args[3].includes('minotaur_boss.sprite'));
+    assert.ok(capturedStudioErr.args[3].includes('open sprite sheet "minotaur_boss.png"'));
+
     // 4. Valid 5s DVR Animated GIF (.gif) payload
     const sampleGifBase64 =
       'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';

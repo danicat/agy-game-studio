@@ -94,7 +94,8 @@ AUTH_HELP_MESSAGE = (
     "  (or pass --vertexai --project \"YOUR_PROJECT_ID\" --location \"global\")\n\n"
     "Or authenticate with a Gemini Developer API key:\n"
     "  export GEMINI_API_KEY=\"your-api-key\"\n\n"
-    "AGENT INSTRUCTION: Fail fast with zero fallbacks. Do NOT attempt rogue workarounds, "
+    "AGENT INSTRUCTION: Always default to location='global' unless the user explicitly "
+    "says otherwise. Fail fast with zero fallbacks. Do NOT attempt rogue workarounds, "
     "mock video files, or silent fallbacks. Stop immediately, report this exact "
     "authentication error to the user, and ask them to configure credentials."
 )
@@ -642,7 +643,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--location",
         default=None,
-        help=f"GCP Location for Vertex AI (defaults to GOOGLE_CLOUD_LOCATION or '{DEFAULT_LOCATION}')",
+        help=f"GCP Location for Vertex AI (defaults to '{DEFAULT_LOCATION}' or GOOGLE_CLOUD_LOCATION; always default to '{DEFAULT_LOCATION}' unless the user explicitly says otherwise)",
     )
     parser.add_argument(
         "--dry-run",

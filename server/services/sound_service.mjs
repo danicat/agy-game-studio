@@ -552,7 +552,7 @@ function scanLibraryDirectory(dirPath, expectedExt, typeLabel) {
 
 function scanWorkspaceForSoundFiles(workspaceDir, maxDepth = 5) {
   const results = [];
-  const skipDirs = new Set(['.git', 'node_modules', 'dist', '.next', 'build', 'coverage']);
+  const skipDirs = new Set(['.git', 'node_modules', 'dist', '.next', 'build', 'coverage', 'skills']);
 
   function walk(currentDir, depth) {
     if (depth > maxDepth) return;

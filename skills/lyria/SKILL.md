@@ -24,10 +24,11 @@ metadata:
 Generate **44.1 kHz stereo audio**, full songs with structured lyrics, instrumental game soundtracks, and thematic compositions from text prompts or visual reference images using Google's **Lyria** models (`lyria-3.5`, `lyria-3-clip-preview`, and `lyria-3-pro-preview`) via **`uv run scripts/lyria.py`** (supporting both **Vertex AI / Gemini Enterprise** and **Gemini Developer API**), the **`gemini-api` CLI** (`gemini-api music`), or the **Google Gen AI SDKs** for application backends.
 
 > [!CAUTION]
-> **Strict Fail-Fast Authentication Policy (Never Go Rogue)**:
+> **Strict Fail-Fast Authentication Policy & Default `global` Location (Never Go Rogue)**:
 > **Never go rogue if `gemini-api` or `scripts/lyria.py` fails.**
-> - If `gemini-api` fails, is not installed, or lacks Vertex AI authentication, run `uv run scripts/lyria.py` (or `uv run skills/lyria/scripts/lyria.py`) with Vertex AI / Application Default Credentials (`GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`, and `gcloud auth application-default login`) or `GEMINI_API_KEY`.
-> - If authentication still fails in `scripts/lyria.py`, **stop immediately**, report the exact authentication error message to the user, and ask them to configure their credentials (`gcloud auth application-default login` + `export GOOGLE_CLOUD_PROJECT=...` or `export GEMINI_API_KEY=...`).
+> - **Always default to the `global` location**: When running Vertex AI / Gemini Enterprise workflows (`scripts/lyria.py` or `google-genai` SDK), always default to `location="global"` (`GOOGLE_CLOUD_LOCATION="global"` / `--location global`) unless the user explicitly says otherwise.
+> - If `gemini-api` fails, is not installed, or lacks Vertex AI authentication, run `uv run scripts/lyria.py` (or `uv run skills/lyria/scripts/lyria.py`) with Vertex AI / Application Default Credentials (`GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION="global"`, and `gcloud auth application-default login --billing-project YOUR_PROJECT_ID`) or `GEMINI_API_KEY`.
+> - If authentication still fails in `scripts/lyria.py`, **stop immediately**, report the exact authentication error message to the user, and ask them to configure their credentials (`gcloud auth application-default login --billing-project YOUR_PROJECT_ID` + `export GOOGLE_CLOUD_PROJECT=...` or `export GEMINI_API_KEY=...`).
 > - Never attempt unauthorized workarounds, never synthesize fake or mock audio files, never silently substitute procedural audio when the user asked for Lyria, and never probe local credential stores outside standard environment variables and ADC.
 
 ---
@@ -49,9 +50,10 @@ You can execute Lyria music generation using either the bundled Python script (`
 
 ```bash
 # 1a. Authenticate with Vertex AI / Gemini Enterprise (Application Default Credentials)
-gcloud auth application-default login
-export GOOGLE_CLOUD_PROJECT="your-gcp-project-id"
-export GOOGLE_CLOUD_LOCATION="us-central1"
+# Always default to the 'global' location unless the user explicitly specifies another region.
+gcloud auth application-default login --billing-project YOUR_PROJECT_ID
+export GOOGLE_CLOUD_PROJECT="YOUR_PROJECT_ID"
+export GOOGLE_CLOUD_LOCATION="global"
 export GOOGLE_GENAI_USE_VERTEXAI="true"
 
 # 1b. Or authenticate with the Gemini Developer API
@@ -215,11 +217,11 @@ uv run scripts/lyria.py \
   -m "lyria-3.5" \
   --lyrics-file "lyrics.txt"
 
-# Generate using Vertex AI / Gemini Enterprise (Application Default Credentials)
+# Generate using Vertex AI / Gemini Enterprise (Application Default Credentials, defaults to 'global')
 uv run scripts/lyria.py \
   --vertexai \
   --project "${GOOGLE_CLOUD_PROJECT}" \
-  --location "${GOOGLE_CLOUD_LOCATION:-us-central1}" \
+  --location "${GOOGLE_CLOUD_LOCATION:-global}" \
   -p "Atmospheric synthwave exploration theme at 110 BPM in D minor with warm analog pads. Instrumental only, no vocals." \
   -f "./assets/stage_theme.wav" \
   --format "wav"
@@ -248,7 +250,7 @@ uv run scripts/lyria.py \
 - `--api`: `interactions` (default) or `models`.
 - `--vertexai`: Enable Vertex AI / Gemini Enterprise authentication using Application Default Credentials (`gcloud auth application-default login`). Also enabled automatically when `GOOGLE_GENAI_USE_VERTEXAI=true` or when `GOOGLE_CLOUD_PROJECT` is set without `GEMINI_API_KEY`.
 - `--project`: Google Cloud Project ID for Vertex AI (defaults to `GOOGLE_CLOUD_PROJECT` or `GCP_PROJECT`).
-- `--location`: Google Cloud Location for Vertex AI (defaults to `GOOGLE_CLOUD_LOCATION` or `us-central1`).
+- `--location`: Google Cloud Location for Vertex AI (defaults to `global` or `GOOGLE_CLOUD_LOCATION`; always use `global` unless the user explicitly specifies otherwise).
 
 ---
 
@@ -320,7 +322,7 @@ if os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "").lower() in ("true", "1"):
     client = genai.Client(
         vertexai=True,
         project=os.environ["GOOGLE_CLOUD_PROJECT"],
-        location=os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1"),
+        location=os.environ.get("GOOGLE_CLOUD_LOCATION", "global"),
     )
 else:
     client = genai.Client()

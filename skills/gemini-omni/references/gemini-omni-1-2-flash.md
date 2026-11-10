@@ -33,7 +33,7 @@
 
 ## 2. Vertex AI / Gemini Enterprise Authentication (`global` Endpoint)
 
-`gemini-omni-1.2-flash` runs on the `global` location in Vertex AI / Gemini Enterprise (`https://aiplatform.googleapis.com/v1beta1/projects/{PROJECT_ID}/locations/global/interactions`). `scripts/omni.py` automatically defaults `--location` to `global` when initializing Vertex AI Application Default Credentials:
+`gemini-omni-1.2-flash` runs on the `global` location in Vertex AI / Gemini Enterprise (`https://aiplatform.googleapis.com/v1beta1/projects/{PROJECT_ID}/locations/global/interactions`). Always default to `location="global"` (`--location global` / `GOOGLE_CLOUD_LOCATION="global"`) unless the user explicitly specifies otherwise. `scripts/omni.py` automatically defaults `--location` to `global` when initializing Vertex AI Application Default Credentials:
 
 ```bash
 gcloud auth application-default login --billing-project YOUR_PROJECT_ID

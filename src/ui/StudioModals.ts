@@ -45,6 +45,7 @@ export interface StudioProjectModalOptions {
 
 export interface LoadedStudioArtifact {
   filename: string;
+  filePath?: string;
   displayName: string;
   ext: string;
   content: ArrayBuffer;
@@ -861,6 +862,7 @@ export function openStudioArtifactModal(options: StudioArtifactModalOptions): vo
             const text = new TextDecoder('utf-8').decode(content);
             await options.onLoadArtifact({
               filename: artRelativePath,
+              filePath: typeof art.filePath === 'string' ? art.filePath : '',
               displayName: artName,
               ext,
               content,

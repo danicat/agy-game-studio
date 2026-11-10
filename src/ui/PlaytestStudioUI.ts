@@ -28,6 +28,7 @@ import {
   buildWasm,
   sendBugToChat,
   sendBuildErrorToChat,
+  sendStudioErrorToChat,
   type BuildWasmFailure
 } from '../utils/api.ts';
 import { FrameDvrBuffer } from '../engine/FrameDvrBuffer.ts';
@@ -84,6 +85,36 @@ export class StudioNotifier {
       detailEl.className = 'toast-detail';
       detailEl.textContent = detail;
       content.appendChild(detailEl);
+    }
+
+    if (type === 'error') {
+      const actionsRow = document.createElement('div');
+      actionsRow.className = 'toast-actions';
+
+      const sendAgentBtn = document.createElement('button');
+      sendAgentBtn.type = 'button';
+      sendAgentBtn.className = 'toast-send-agent-btn';
+      sendAgentBtn.textContent = '💬 Send to Agent';
+      sendAgentBtn.title = 'Send this error directly to the active Antigravity agent for diagnosis';
+      sendAgentBtn.addEventListener('click', async () => {
+        sendAgentBtn.disabled = true;
+        sendAgentBtn.textContent = 'Sending...';
+        try {
+          await sendStudioErrorToChat({
+            errorTitle: message,
+            errorDetail: detail || message,
+          });
+          sendAgentBtn.textContent = '✓ Sent to Agent';
+          sendAgentBtn.classList.add('sent');
+        } catch (err: any) {
+          sendAgentBtn.disabled = false;
+          sendAgentBtn.textContent = '💬 Retry Send to Agent';
+          console.error('[StudioNotifier] Failed to send error to agent:', err);
+        }
+      });
+
+      actionsRow.appendChild(sendAgentBtn);
+      content.appendChild(actionsRow);
     }
 
     const closeBtn = document.createElement('button');
@@ -150,6 +181,7 @@ export class StudioNotifier {
         <p class="fatal-desc">A critical error occurred in Game Dev Studio. Failed fast with full diagnostics:</p>
         <pre class="fatal-pre"></pre>
         <div class="fatal-actions">
+          <button type="button" class="btn btn-send-chat" id="fatal-send-agent-btn">💬 Send to Agent</button>
           <button type="button" class="btn btn-danger" id="fatal-reload-btn">Reload Studio</button>
           <button type="button" class="btn btn-outline" id="fatal-dismiss-btn">Dismiss (Esc)</button>
         </div>
@@ -172,6 +204,24 @@ export class StudioNotifier {
       }
     };
     window.addEventListener('keydown', onEsc);
+
+    const fatalSendBtn = overlay.querySelector('#fatal-send-agent-btn') as HTMLButtonElement | null;
+    fatalSendBtn?.addEventListener('click', async () => {
+      if (!fatalSendBtn) return;
+      fatalSendBtn.disabled = true;
+      fatalSendBtn.textContent = 'Sending...';
+      try {
+        await sendStudioErrorToChat({
+          errorTitle: title,
+          errorDetail: detailLines,
+        });
+        fatalSendBtn.textContent = '✓ Sent to Agent';
+      } catch (err) {
+        fatalSendBtn.disabled = false;
+        fatalSendBtn.textContent = '💬 Retry Send to Agent';
+        console.error('[StudioNotifier] Failed to send fatal error to agent:', err);
+      }
+    });
 
     overlay.querySelector('#fatal-reload-btn')?.addEventListener('click', () => {
       window.location.reload();

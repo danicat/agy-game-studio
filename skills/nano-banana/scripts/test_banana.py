@@ -38,6 +38,7 @@ def test_banana_help():
     assert "--vertexai" in result.stdout
     assert "--project" in result.stdout
     assert "--location" in result.stdout
+    assert "global" in result.stdout
     assert "nano-banana-2.1" in result.stdout
     assert "nano-banana-2-1" in result.stdout
     assert "medium" in result.stdout

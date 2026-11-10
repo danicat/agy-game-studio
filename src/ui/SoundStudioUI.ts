@@ -593,6 +593,7 @@ export class SoundStudioUI {
   private activeFilePath: string = '';
   private activeFileName: string = '';
   private activeDocType: 'music' | 'sfx' = 'sfx';
+  private diskSfxFiles: Array<{ name: string; path: string }> = [];
   private editorMode: SoundEditorMode = 'gui';
   private useAppleSynth = false;
   private loopEnabled = false;
@@ -884,7 +885,7 @@ export class SoundStudioUI {
             role="tabpanel"
             aria-labelledby="tab-mode-sfx"
           >
-            <div class="sound-preset-strip" id="sound-sfx-preset-grid" aria-label="Sound Effect Presets"></div>
+            <div class="sound-preset-strip hidden" id="sound-sfx-preset-grid" aria-label="Sound Effect Files on Disk"></div>
 
             <div class="sound-tone-row">
               <span class="sound-control-label">Tone</span>
@@ -1143,26 +1144,104 @@ export class SoundStudioUI {
   }
 
   private renderSfxPresetChips(): void {
-    this.sfxPresetGridEl.innerHTML = FRIENDLY_SFX_PRESETS.map(
-      (p) => `
+    if (!this.sfxPresetGridEl) return;
+    if (this.diskSfxFiles.length === 0) {
+      this.sfxPresetGridEl.innerHTML = '';
+      this.sfxPresetGridEl.classList.add('hidden');
+      return;
+    }
+
+    this.sfxPresetGridEl.classList.remove('hidden');
+    this.sfxPresetGridEl.innerHTML = this.diskSfxFiles
+      .map((f) => {
+        const isActive =
+          (this.activeFilePath && this.activeFilePath === f.path) ||
+          (!this.activeFilePath && this.activeFileName && this.activeFileName === f.name);
+        const label = f.name.replace(/\.sfx$/i, '');
+        return `
         <button
           type="button"
-          class="sound-preset-chip ${this.sfxState.preset === p.id ? 'active' : ''}"
-          data-preset="${p.id}"
+          class="sound-preset-chip ${isActive ? 'active' : ''}"
+          data-sfx-path="${this.escapeHtml(f.path)}"
+          title="${this.escapeHtml(f.path)}"
         >
-          ${p.label}
+          ${this.escapeHtml(label)}
         </button>
-      `
-    ).join('');
+      `;
+      })
+      .join('');
 
     this.sfxPresetGridEl.querySelectorAll('.sound-preset-chip').forEach((btn) => {
       btn.addEventListener('click', () => {
-        const presetId = (btn as HTMLElement).getAttribute('data-preset') || '';
-        if (presetId) {
-          this.applySfxPreset(presetId);
+        const sfxPath = (btn as HTMLElement).getAttribute('data-sfx-path') || '';
+        if (sfxPath) {
+          void this.loadFileFromPath(sfxPath, true);
         }
       });
     });
+  }
+
+  private async refreshDiskSfxFiles(): Promise<void> {
+    try {
+      const files: Array<{ name: string; path: string }> = [];
+      const seenPaths = new Set<string>();
+
+      const addFile = (name: string, filePath: string) => {
+        if (!name || !filePath || !name.toLowerCase().endsWith('.sfx')) return;
+        const normalized = filePath.replace(/\\/g, '/');
+        if (normalized.includes('/skills/procedural-sfx/scripts/')) return;
+        if (seenPaths.has(filePath)) return;
+        seenPaths.add(filePath);
+        files.push({ name, path: filePath });
+      };
+
+      const activeDir =
+        this.activeFilePath && /[\\/]/.test(this.activeFilePath)
+          ? this.activeFilePath.replace(/[\\/][^\\/]+$/, '')
+          : '';
+
+      if (activeDir) {
+        const listRes = await sidecarFetch(
+          `/api/fs/list?dir=${encodeURIComponent(activeDir)}&filter=sound&extensions=.sfx`,
+          { method: 'GET', cache: 'no-store' }
+        );
+        if (listRes.ok) {
+          const listData = await listRes.json();
+          if (Array.isArray(listData.files)) {
+            for (const entry of listData.files) {
+              addFile(entry.name || '', entry.path || entry.filePath || '');
+            }
+          }
+        }
+      }
+
+      if (files.length === 0) {
+        const ws = getWorkspacePath() || '';
+        if (ws) {
+          const wsRes = await sidecarFetch(
+            `/api/sound/files?workspace=${encodeURIComponent(ws)}`,
+            { method: 'GET', cache: 'no-store' }
+          );
+          if (wsRes.ok) {
+            const wsData = await wsRes.json();
+            if (Array.isArray(wsData.workspaceFiles)) {
+              for (const entry of wsData.workspaceFiles) {
+                const fPath = entry.path || entry.filePath || '';
+                const fName = entry.name || entry.fileName || '';
+                if (fName.toLowerCase().endsWith('.sfx') || entry.type === 'sfx') {
+                  addFile(fName, fPath);
+                }
+              }
+            }
+          }
+        }
+      }
+
+      this.diskSfxFiles = files;
+    } catch {
+      // Keep current list on transient error
+    }
+    this.renderSfxPresetChips();
   }
 
   private renderSfxToneButtons(): void {
@@ -1694,6 +1773,7 @@ export class SoundStudioUI {
 
     await syncWorkspaceFromHost();
     await this.refreshPresetsCatalog();
+    await this.refreshDiskSfxFiles();
 
     const params = new URLSearchParams(window.location.search);
     const fileParam = (params.get('file') || params.get('path') || params.get('uri') || '').trim();
@@ -1865,6 +1945,7 @@ export class SoundStudioUI {
       this.playOffsetSec = 0;
       this.setDslContent(content, fileName, data.filePath || filePath, detectedType);
       this.resetHistoryBaseline();
+      void this.refreshDiskSfxFiles();
 
       if (autoPlay) {
         await this.synthesizeAndPlay(true, false);
@@ -3656,8 +3737,14 @@ export class SoundStudioUI {
     this.trackLiveMeta.clear();
     this.exportWavNeedsResynth = false;
     this.playOffsetSec = 0;
-    this.setDslContent(content, artifact.displayName || artifact.filename, '', detectedType);
+    this.setDslContent(
+      content,
+      artifact.displayName || artifact.filename,
+      artifact.filePath || '',
+      detectedType
+    );
     this.resetHistoryBaseline();
+    void this.refreshDiskSfxFiles();
     await this.synthesizeAndPlay(true, false);
   }
 
@@ -3713,6 +3800,7 @@ export class SoundStudioUI {
         this.activeFileName = filename;
         this.updateActiveFileLabel();
         this.syncEditorModeUI();
+        void this.refreshDiskSfxFiles();
       }
     });
   }

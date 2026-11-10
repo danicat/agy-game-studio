@@ -155,9 +155,18 @@ export interface SendBuildErrorToChatParams {
   pkg?: string;
 }
 
+export interface SendStudioErrorToChatParams {
+  sessionId?: string;
+  errorTitle: string;
+  errorDetail?: string;
+  tab?: string;
+  filePath?: string;
+  workspace?: string;
+}
+
 export interface SendToChatResponse {
   success: boolean;
-  mode: 'screenshot' | 'build-error';
+  mode: 'screenshot' | 'build-error' | 'studio-error';
   filePath?: string;
   filename?: string;
 }
@@ -701,6 +710,89 @@ export async function sendBuildErrorToChat(
   if (!res.ok) {
     throw new Error(
       data.error || `Failed to send build error to chat: HTTP ${res.status} ${res.statusText}`
+    );
+  }
+
+  return data as SendToChatResponse;
+}
+
+function inferActiveStudioContext(): { tab: string; filePath: string } {
+  const activeTabBtn = document.querySelector('.studio-top-tab.active') as HTMLElement | null;
+  const viewAttr = activeTabBtn?.dataset?.view || '';
+  const params = new URLSearchParams(window.location.search);
+  const queryTab = (params.get('tab') || '').trim().toLowerCase();
+  const rawView = viewAttr || queryTab || 'playtest';
+  const tab =
+    rawView === 'sound'
+      ? 'Sound'
+      : rawView === 'sprite' || rawView === 'sprites'
+        ? 'Sprites'
+        : 'Playtest';
+
+  let filePath = (params.get('file') || params.get('path') || '').trim();
+  if (rawView === 'sprite' || rawView === 'sprites') {
+    const badge = document.getElementById('spr-active-file-badge');
+    const titlePath = badge?.getAttribute('title')?.trim() || '';
+    if (titlePath && titlePath !== 'No sprite loaded') {
+      filePath = titlePath;
+    }
+  } else if (rawView === 'sound') {
+    const label = document.getElementById('sound-active-file-label');
+    const titlePath = label?.getAttribute('title')?.trim() || '';
+    if (titlePath && !/^Untitled\.(sfx|music)$/i.test(titlePath)) {
+      filePath = titlePath;
+    }
+  }
+
+  return { tab, filePath };
+}
+
+/**
+ * Push any Game Dev Studio error toast or fatal diagnostic directly to the active Antigravity chat session
+ * so the agent can inspect and fix the issue immediately.
+ */
+export async function sendStudioErrorToChat(
+  params: SendStudioErrorToChatParams
+): Promise<SendToChatResponse> {
+  const sessionId =
+    params.sessionId ||
+    window.sidecar?.conversationId ||
+    getActiveSessionId() ||
+    'standalone';
+  const workspace = params.workspace || getWorkspacePath() || '.';
+  const inferred = inferActiveStudioContext();
+  const tab = params.tab || inferred.tab;
+  const filePath = params.filePath ?? inferred.filePath;
+  const errorTitle = params.errorTitle.trim() || 'Game Dev Studio Error';
+  const studioError = (params.errorDetail && params.errorDetail.trim()) || errorTitle;
+
+  const res = await sidecarFetch('/api/send-to-chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      session_id: sessionId,
+      errorTitle,
+      studioError,
+      workspace,
+      metadata: {
+        workspace,
+        tab,
+        filePath,
+      },
+    }),
+  });
+
+  const rawText = await res.text();
+  let data: any = {};
+  try {
+    data = rawText ? JSON.parse(rawText) : {};
+  } catch {
+    data = { error: rawText };
+  }
+
+  if (!res.ok) {
+    throw new Error(
+      data.error || `Failed to send error to agent: HTTP ${res.status} ${res.statusText}`
     );
   }
 

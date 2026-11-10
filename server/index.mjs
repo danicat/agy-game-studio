@@ -577,6 +577,7 @@ export function scanConversationMedia(sessionDir, filter = 'all') {
           results.push({
             filename: relPath,
             relativePath: relPath,
+            filePath: fullPath,
             name: entry.name,
             displayName: entry.name,
             source,
@@ -1799,6 +1800,50 @@ export async function processSendToChat(body, sidecarApp = null) {
     return {
       success: true,
       mode: 'build-error',
+    };
+  }
+
+  // Payload (C): Studio UI / DSL / Synthesis Error
+  if (typeof body.studioError === 'string' && body.studioError.trim().length > 0) {
+    const metaObj = metadata && typeof metadata === 'object' ? metadata : {};
+    const effectiveWorkspace = workspace || metaObj.workspace || getDefaultWorkspace();
+    const errorTitle =
+      typeof body.errorTitle === 'string' && body.errorTitle.trim()
+        ? body.errorTitle.trim()
+        : 'Game Dev Studio Error';
+    const activeTab = typeof metaObj.tab === 'string' && metaObj.tab.trim() ? metaObj.tab.trim() : '';
+    const activeFile =
+      typeof metaObj.filePath === 'string' && metaObj.filePath.trim()
+        ? metaObj.filePath.trim()
+        : '';
+
+    const contextParts = [`**Workspace**: \`${effectiveWorkspace}\``];
+    if (activeTab) contextParts.push(`**Tab**: \`${activeTab}\``);
+    if (activeFile) contextParts.push(`**File**: \`${activeFile}\``);
+
+    const lines = [
+      `### ⚠️ Game Dev Studio Error: ${errorTitle}`,
+      '',
+      contextParts.join(' | '),
+    ];
+
+    if (typeof note === 'string' && note.trim()) {
+      lines.push('', `**Note**: ${note.trim()}`);
+    }
+
+    lines.push('', '```text', body.studioError.trim(), '```');
+    const messageContent = lines.join('\n');
+
+    await deliverMessageToChat(
+      sidecarApp,
+      sessionId,
+      `Studio Error: ${errorTitle}`,
+      messageContent
+    );
+
+    return {
+      success: true,
+      mode: 'studio-error',
     };
   }
 

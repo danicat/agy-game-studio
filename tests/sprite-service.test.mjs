@@ -95,5 +95,36 @@ describe('Sprite Studio Service & Fast Go Sprite CLI Tests', () => {
 
     const pngBuf = getSpriteSheetPng(compiled.sheetId);
     assert.ok(pngBuf.length > 1000);
+
+    // Verify compiling when both inline `dsl` and `filePath` are provided for a sprite in an external directory
+    const fs = await import('node:fs');
+    const os = await import('node:os');
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sprite-ext-test-'));
+    try {
+      const srcPng = path.join(REPO_ROOT, 'skills', 'sprite-design', 'scripts', 'black_cat_anime.png');
+      const extPng = path.join(tmpDir, 'minotaur_boss.png');
+      const extSprite = path.join(tmpDir, 'minotaur_boss.sprite');
+      fs.copyFileSync(srcPng, extPng);
+      const extDsl = [
+        'title "Minotaur Boss"',
+        'type sprite',
+        'sheet "minotaur_boss.png"',
+        'size 256x256',
+        'grid 4x8',
+        'fps 8',
+        'tag idle 0..3 loop',
+      ].join('\n');
+      fs.writeFileSync(extSprite, extDsl, 'utf-8');
+
+      const compiledWithBoth = await compileSpriteDsl({
+        dsl: extDsl,
+        filePath: extSprite,
+      });
+      assert.ok(compiledWithBoth.sheetId);
+      assert.equal(compiledWithBoth.report.title, 'Minotaur Boss');
+      assert.equal(compiledWithBoth.report.width, 256);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });

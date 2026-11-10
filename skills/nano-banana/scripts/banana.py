@@ -55,15 +55,18 @@ VALID_ASPECT_RATIOS = [
 
 EXTENDED_ASPECT_RATIOS = {"1:4", "4:1", "1:8", "8:1"}
 
+DEFAULT_LOCATION = "global"
+
 AUTH_REMEDIATION_MESSAGE = (
     "Authentication guidance:\n"
     "  Option 1 - Vertex AI / Gemini Enterprise (Application Default Credentials):\n"
-    "    gcloud auth application-default login\n"
-    "    export GOOGLE_CLOUD_PROJECT=\"your-gcp-project-id\"\n"
-    "    export GOOGLE_CLOUD_LOCATION=\"us-central1\"\n"
+    "    gcloud auth application-default login --billing-project YOUR_PROJECT_ID\n"
+    "    export GOOGLE_CLOUD_PROJECT=\"YOUR_PROJECT_ID\"\n"
+    "    export GOOGLE_CLOUD_LOCATION=\"global\"\n"
     "  Option 2 - Gemini Developer API (API Key):\n"
     "    export GEMINI_API_KEY=\"your-api-key\"\n"
-    "CRITICAL FOR AGENTS: Fail fast. Do NOT attempt unauthorized workarounds, fallback image generators, "
+    "CRITICAL FOR AGENTS: Fail fast. Always default to location='global' unless the user explicitly "
+    "says otherwise. Do NOT attempt unauthorized workarounds, fallback image generators, "
     "or procedural placeholder files. Stop immediately, report this exact authentication error to the user, "
     "and ask them to configure credentials."
 )
@@ -154,13 +157,19 @@ def init_client(args):
             )
             sys.exit(1)
 
+        quota_project = getattr(credentials, "quota_project_id", None)
         project = (
             args.project
             or os.environ.get("GOOGLE_CLOUD_PROJECT")
             or os.environ.get("GCP_PROJECT")
             or default_project
+            or quota_project
         )
-        location = args.location or os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
+        location = (
+            args.location
+            or os.environ.get("GOOGLE_CLOUD_LOCATION")
+            or DEFAULT_LOCATION
+        )
 
         if not project:
             print(
@@ -240,7 +249,10 @@ def main():
         help="Force Vertex AI / Gemini Enterprise authentication via Application Default Credentials"
     )
     parser.add_argument("--project", help="GCP Project ID for Vertex AI")
-    parser.add_argument("--location", help="GCP Location for Vertex AI (default: GOOGLE_CLOUD_LOCATION or us-central1)")
+    parser.add_argument(
+        "--location",
+        help=f"GCP Location for Vertex AI (default: '{DEFAULT_LOCATION}' or GOOGLE_CLOUD_LOCATION; always default to '{DEFAULT_LOCATION}' unless the user explicitly says otherwise)",
+    )
 
     args = parser.parse_args()
     model_id = MODEL_MAP[args.model]

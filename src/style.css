@@ -1321,6 +1321,45 @@ body.studio-mode-full #app-root {
   overflow: auto;
 }
 
+.toast-actions {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.toast-send-agent-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(254, 242, 242, 0.35);
+  background: rgba(15, 23, 42, 0.45);
+  color: #FEF2F2;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease;
+}
+
+.toast-send-agent-btn:hover:not(:disabled) {
+  background: rgba(15, 23, 42, 0.72);
+  border-color: rgba(254, 242, 242, 0.65);
+}
+
+.toast-send-agent-btn:disabled {
+  opacity: 0.85;
+  cursor: default;
+}
+
+.toast-send-agent-btn.sent {
+  background: #065F46;
+  border-color: #10B981;
+  color: #ECFDF5;
+}
+
 .toast-close {
   background: none;
   border: none;

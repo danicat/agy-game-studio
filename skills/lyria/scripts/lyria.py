@@ -42,16 +42,19 @@ MODEL_MAP = {
     "lyria-pro": "lyria-3-pro-preview",
 }
 
+DEFAULT_LOCATION = "global"
+
 AUTH_HELP_MESSAGE = (
     "Authenticate using one of the following methods:\n"
     "  1. Vertex AI / Gemini Enterprise (ADC):\n"
-    "     gcloud auth application-default login\n"
-    "     export GOOGLE_CLOUD_PROJECT=\"your-gcp-project-id\"\n"
-    "     export GOOGLE_CLOUD_LOCATION=\"us-central1\"\n"
-    "     (or pass --vertexai --project \"your-gcp-project-id\" --location \"us-central1\")\n"
+    "     gcloud auth application-default login --billing-project YOUR_PROJECT_ID\n"
+    "     export GOOGLE_CLOUD_PROJECT=\"YOUR_PROJECT_ID\"\n"
+    "     export GOOGLE_CLOUD_LOCATION=\"global\"\n"
+    "     (or pass --vertexai --project \"YOUR_PROJECT_ID\" --location \"global\")\n"
     "  2. Gemini Developer API:\n"
     "     export GEMINI_API_KEY=\"your-api-key\"\n\n"
-    "AGENT INSTRUCTION: Do NOT attempt rogue workarounds, mock audio files, or silent fallbacks. "
+    "AGENT INSTRUCTION: Always default to location='global' unless the user explicitly says otherwise. "
+    "Do NOT attempt rogue workarounds, mock audio files, or silent fallbacks. "
     "Stop immediately, report this exact authentication error to the user, and ask them to configure credentials."
 )
 
@@ -84,11 +87,12 @@ def init_client(args):
             )
             sys.exit(1)
 
-        project = args.project or env_project or default_project
+        quota_project = getattr(credentials, "quota_project_id", None)
+        project = args.project or env_project or default_project or quota_project
         location = (
             args.location
             or os.environ.get("GOOGLE_CLOUD_LOCATION")
-            or "us-central1"
+            or DEFAULT_LOCATION
         )
 
         if not project:
@@ -179,7 +183,7 @@ def main():
     parser.add_argument(
         "--location",
         default=None,
-        help="GCP Location for Vertex AI (defaults to GOOGLE_CLOUD_LOCATION or 'us-central1')",
+        help=f"GCP Location for Vertex AI (defaults to '{DEFAULT_LOCATION}' or GOOGLE_CLOUD_LOCATION; always default to '{DEFAULT_LOCATION}' unless the user explicitly says otherwise)",
     )
 
     args = parser.parse_args()

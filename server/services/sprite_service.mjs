@@ -602,6 +602,10 @@ export async function compileSpriteDsl({ dsl, preset, filePath } = {}) {
   let sourceDsl = typeof dsl === 'string' ? dsl : '';
   let resolvedPath = '';
 
+  if (filePath && typeof filePath === 'string' && filePath.trim()) {
+    resolvedPath = normalizeInputPath(filePath, 'filePath');
+  }
+
   if (!sourceDsl.trim() && preset) {
     const catalog = await getSpritePresets();
     const found = (catalog.presets || []).find((p) => p.name === preset);
@@ -609,8 +613,7 @@ export async function compileSpriteDsl({ dsl, preset, filePath } = {}) {
       throw createSpriteError(`Unknown sprite preset "${preset}".`, 404);
     }
     sourceDsl = found.dsl;
-  } else if (!sourceDsl.trim() && filePath) {
-    resolvedPath = normalizeInputPath(filePath, 'filePath');
+  } else if (!sourceDsl.trim() && resolvedPath) {
     if (!fs.existsSync(resolvedPath)) {
       throw createSpriteError(`Sprite DSL file not found: "${resolvedPath}"`, 404);
     }
@@ -620,6 +623,11 @@ export async function compileSpriteDsl({ dsl, preset, filePath } = {}) {
   if (!sourceDsl.trim()) {
     throw createSpriteError('Missing or empty ".sprite" DSL source.', 400);
   }
+
+  const baseDir =
+    resolvedPath && fs.existsSync(path.dirname(resolvedPath))
+      ? path.dirname(resolvedPath)
+      : SPRITE_SCRIPTS_DIR;
 
   const binPath = await ensureSpriteCliBinary();
   const tmpId = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
@@ -631,7 +639,7 @@ export async function compileSpriteDsl({ dsl, preset, filePath } = {}) {
     const { stdout, stderr } = await execCli(
       binPath,
       ['synth-json', '-png', tmpPngPath, tmpDslPath],
-      { cwd: resolvedPath ? path.dirname(resolvedPath) : SPRITE_SCRIPTS_DIR }
+      { cwd: baseDir }
     );
     const lines = stdout
       .split('\n')

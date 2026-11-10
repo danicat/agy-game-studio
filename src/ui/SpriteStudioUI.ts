@@ -1687,7 +1687,7 @@ export class SpriteStudioUI {
 
   private async loadArtifactIntoEditor(artifact: LoadedStudioArtifact): Promise<void> {
     this.pausePlayback();
-    this.activeFilePath = '';
+    this.activeFilePath = artifact.filePath || '';
     this.activeFileName = artifact.displayName || artifact.filename;
     this.updateActiveFileBadge();
 

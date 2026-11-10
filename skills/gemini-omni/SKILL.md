@@ -24,8 +24,9 @@ metadata:
 Generate, edit, interpolate, extend, and upscale high-coherence video (`360p` to `4k` MP4 at `24 FPS`) with native synchronized audio (speech, dialogue, music, and sound effects) using **Gemini Omni 1.2 Flash** (`gemini-omni-1.2-flash`) via **`uv run scripts/omni.py`** and the **Google Gen AI Interactions API** (`client.interactions.create`).
 
 > [!CAUTION]
-> **Strict Fail-Fast Authentication Policy (Never Go Rogue)**:
+> **Strict Fail-Fast Authentication Policy & Default `global` Location (Never Go Rogue)**:
 > **Never go rogue if `scripts/omni.py` fails.**
+> - **Always default to the `global` location**: When running Vertex AI / Gemini Enterprise workflows (`scripts/omni.py` or `google-genai` SDK), always default to `location="global"` (`GOOGLE_CLOUD_LOCATION="global"` / `--location global`) unless the user explicitly says otherwise.
 > - Run `uv run scripts/omni.py` (or `uv run skills/gemini-omni/scripts/omni.py`) using Vertex AI / Gemini Enterprise Application Default Credentials (`gcloud auth application-default login --billing-project YOUR_PROJECT_ID`, `GOOGLE_CLOUD_PROJECT`, and `GOOGLE_CLOUD_LOCATION="global"`).
 > - If authentication fails in `scripts/omni.py`, **stop immediately**, report the exact authentication error message to the user, and ask them to configure their credentials (`gcloud auth application-default login --billing-project YOUR_PROJECT_ID` and `export GOOGLE_CLOUD_PROJECT="YOUR_PROJECT_ID"`).
 > - Never attempt unauthorized workarounds, never generate empty or mock `.mp4` files, and never probe local credential stores outside standard environment variables and ADC.

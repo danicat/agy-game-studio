@@ -75,11 +75,11 @@ uv run scripts/lyria.py \
   -m lyria-3.5 \
   --lyrics-file lofi_track_structure.txt
 
-# Or explicitly pass Vertex AI / Gemini Enterprise flags (ADC via gcloud auth application-default login)
+# Or explicitly pass Vertex AI / Gemini Enterprise flags (ADC via gcloud auth application-default login; defaults to 'global')
 uv run scripts/lyria.py \
   --vertexai \
   --project "${GOOGLE_CLOUD_PROJECT}" \
-  --location "${GOOGLE_CLOUD_LOCATION:-us-central1}" \
+  --location "${GOOGLE_CLOUD_LOCATION:-global}" \
   -p "An atmospheric lo-fi jazz track at 85 BPM in E Minor. Instrumental only, no vocals." \
   -f lofi_track.mp3 \
   -m lyria-3.5
