@@ -9,21 +9,10 @@
     "display_name": "Game Dev Studio",
     "views": [
       {
-        "path": "/playtest",
-        "entrypoint": "SIDECAR_UI_ENTRYPOINT_AUX_PANE",
-        "title": "Game Dev Studio"
-      },
-      {
-        "path": "/sound",
+        "path": "/",
         "entrypoint": "SIDECAR_UI_ENTRYPOINT_AUX_PANE",
         "title": "Game Dev Studio",
-        "file_extensions": [".music", ".sfx"]
-      },
-      {
-        "path": "/sprite",
-        "entrypoint": "SIDECAR_UI_ENTRYPOINT_AUX_PANE",
-        "title": "Game Dev Studio",
-        "file_extensions": [".sprite", ".aseprite"]
+        "file_extensions": [".music", ".sfx", ".sprite", ".aseprite"]
       }
     ]
   }
