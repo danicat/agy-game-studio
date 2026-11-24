@@ -15,7 +15,7 @@
 
 | Property | Value |
 | :--- | :--- |
-| **Input Modalities** | Text, Image / PDF |
+| **Input Modalities** | Text, Image, Video (YouTube URLs, MP4s), PDF |
 | **Output Modalities** | Image and Text (Interleaved) |
 | **Input Token Limit** | 65,536 tokens |
 | **Output Token Limit** | 4,096 tokens |
@@ -66,16 +66,20 @@ Nano Banana 2 Lite generates images within a 1K bounding box across 14 discrete 
 
 ---
 
-## CLI & SDK Examples
+## MCP tool, CLI & SDK Examples
 
-### 1. `uv run skills/nano-banana/scripts/banana.py`: Fast 1K Generation
+### 1. `image_generate` MCP tool: Fast 1K Generation
 
-```bash
-uv run skills/nano-banana/scripts/banana.py \
-  -p "A vibrant sticker of a cute robot drinking bubble tea, white background" \
-  -f "robot_sticker.png" \
-  -m "nano-banana-2-lite" \
-  -a "1:1"
+```json
+{
+  "tool": "image_generate",
+  "arguments": {
+    "prompt": "A vibrant sticker of a cute robot drinking bubble tea, white background",
+    "outPath": "robot_sticker.png",
+    "model": "nano-banana-2-lite",
+    "aspectRatio": "1:1"
+  }
+}
 ```
 
 ### 2. `gemini-api` CLI: Fast 1K Generation

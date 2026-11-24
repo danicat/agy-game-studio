@@ -6,7 +6,7 @@ This module covers 4-byte aligned 44.1 kHz 16-bit stereo PCM audio playback acro
 
 ## 1. Unified 44.1 kHz Stereo PCM Audio & WebAssembly Autoplay Unlock
 
-Ebitengine's `audio.Context` operates on **16-bit signed Little-Endian stereo PCM at 44,100 Hz (4 bytes per sample frame: 2 channels x 2 bytes)**. Share a single `*audio.Context` across all `procedural-sfx` (`.sfx`), `procedural-music` (`.music`), and `lyria` audio buffers.
+Ebitengine's `audio.Context` operates on **16-bit signed little-endian stereo PCM at 44,100 Hz (4 bytes per sample frame: 2 bytes Left + 2 bytes Right)**. Share a single `*audio.Context` across all `procedural-sfx` (`.sfx`), `procedural-music` (`.music`), and `lyria` audio buffers.
 
 Modern browsers block WebAudio playback until the user performs an explicit interaction gesture (key press, mouse click, or touch). Meanwhile, the game's `Update()` loop and visual clocks continue running from `0:00`.
 
@@ -37,12 +37,12 @@ const (
 )
 
 type SyncedBGMPlayer struct {
-	ctx             *ebitaudio.Context
-	loopStream      *ebitaudio.InfiniteLoop
-	player          *ebitaudio.Player
+	ctx           *ebitaudio.Context
+	loopStream    *ebitaudio.InfiniteLoop
+	player        *ebitaudio.Player
 	loopLengthBytes int64
-	elapsed         time.Duration
-	unlocked        bool
+	elapsed       time.Duration
+	unlocked      bool
 }
 
 func NewSyncedBGMPlayer(ctx *ebitaudio.Context, pcmStream io.ReadSeeker, loopLengthBytes int64) (*SyncedBGMPlayer, error) {
@@ -189,9 +189,9 @@ import (
 )
 
 type GameSaveData struct {
-	Version   int   `json:"version"`
-	HighScore int   `json:"high_score"`
-	Unlocked  []int `json:"unlocked"`
+	Version   int    `json:"version"`
+	HighScore int    `json:"high_score"`
+	Unlocked  []int  `json:"unlocked"`
 }
 
 type Storage interface {

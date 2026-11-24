@@ -1,6 +1,6 @@
 # Ebitengine Project Structure & Package Reference
 
-A clean, modular Go game project layout keeps dependencies decoupled across any 2D genre (top-down, tactics, shmup, puzzle, isometric, or platformer), prevents monolithic single-file codebases, and compiles cleanly to both native desktop and WebAssembly (`GOOS=js GOARCH=wasm`) for the Playtest tab in `game-dev-studio`.
+A clean, modular Go game project layout keeps dependencies decoupled across any 2D genre (top-down, tactics, shmup, puzzle, isometric, or platformer), prevents monolithic single-file codebases, and compiles cleanly to both native desktop and WebAssembly (`GOOS=js GOARCH=wasm`).
 
 ---
 
@@ -61,7 +61,7 @@ mygame/
 
 ## Package Responsibilities
 
-- **`cmd/game`**: Entrypoint for native desktop (`go run ./cmd/game`) and WebAssembly builds (`GOOS=js GOARCH=wasm go build ./cmd/game`) executed by the Playtest tab in Game Dev Studio (`sidecar://agy-game-studio/studio/playtest`).
+- **`cmd/game`**: Entrypoint for native desktop (`go run ./cmd/game`) and WebAssembly builds (`GOOS=js GOARCH=wasm go build ./cmd/game`).
 - **`cmd/server`**: Entrypoint for hosting WASM builds and High Score REST API endpoints.
 - **`internal/game`**: Implements `ebiten.Game` (`Update`, `Draw`, `Layout`). Delegates lifecycle updates to `internal/state` and propagates errors visibly to stdout/stderr.
 - **`internal/state`**: Manages state transitions and scene lifecycles. Ensures audio, particles, and camera trauma reset cleanly upon scene exit.
@@ -71,4 +71,4 @@ mygame/
 - **`internal/render`**: Houses `sprite-design` `GridSpriteSheet` and `AnimationController` playback (supporting both pixel-art and 2D HD resolutions) alongside Kage shaders (`//kage:unit pixels`) for lighting, hit-flash, and CRT effects.
 - **`internal/save`**: Build-tagged fail-fast save persistence (`os.UserConfigDir()` on desktop, `localStorage` on WASM).
 - **`internal/ui`**: Renders HUD components with premultiplied `color.RGBA` and `github.com/hajimehoshi/ebiten/v2/text/v2`.
-- **`internal/assets`**: Uses `//go:embed` to package sprites (`.sprite`, `.aseprite`, `.png`+`.json`), audio scripts/streams (`.sfx`, `.music`, `.wav`), TTF/OTF fonts, and Kage shaders into the Go binary, failing fast with `fmt.Errorf` if any asset fails validation or decoding.
+- **`internal/assets`**: Uses `//go:embed` to package baked sprites (`.png`+`.json`, `.aseprite`, `.sprite`), baked audio (`.wav`, `.mp3`) and source scores (`.sfx`, `.music`), TTF/OTF fonts, and Kage shaders into the Go binary, failing fast with `fmt.Errorf` if any asset fails validation or decoding.

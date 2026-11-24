@@ -1,8 +1,8 @@
 {
   "name": "agy-game-studio",
   "displayName": "Game Dev Studio",
-  "version": "0.3.0",
-  "description": "Game Dev Studio UI extension for Antigravity, Ebitengine, and Go with live WebAssembly Playtest tab, Sound Editor (.music & .sfx), and Sprite Editor (.sprite & .aseprite).",
+  "version": "0.4.0",
+  "description": "Unified Antigravity 2D game development plugin for Go and Ebitengine with 9 bundled skills, a 10-tool Go MCP server, and the Game Dev Studio 60 FPS WASM Playtest UI.",
   "type": "module",
   "main": "sidecars/studio/main.mjs",
   "repository": {
@@ -37,7 +37,12 @@
     "coreaudio",
     "audio",
     "gamedev",
-    "gemini"
+    "gemini",
+    "mcp",
+    "lyria",
+    "nano-banana",
+    "aseprite",
+    "2d-sprites"
   ],
   "author": "Daniela Petruzalek <daniela@danicat.dev> (https://danicat.dev)",
   "license": "Apache-2.0",

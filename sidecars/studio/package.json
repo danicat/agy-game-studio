@@ -1,8 +1,8 @@
 {
   "name": "agy-game-studio-panel",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
-  "description": "Game Dev Studio UI extension sidecar for Antigravity (Playtest tab, Sound Editor, and Sprite Editor).",
+  "description": "Game Dev Studio Playtest UI extension sidecar for Antigravity.",
   "license": "Apache-2.0"
 }

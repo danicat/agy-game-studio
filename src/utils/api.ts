@@ -98,17 +98,6 @@ export interface FsListResponse {
   defaultPkg: string;
 }
 
-export interface SessionArtifactItem {
-  filename: string;
-  relativePath: string;
-  name: string;
-  displayName: string;
-  source: string;
-  size: number;
-  modifiedTime: number;
-  ext: string;
-}
-
 export interface BuildWasmSuccess {
   ok: true;
   status: 200;
@@ -869,58 +858,5 @@ export async function fetchPackages(dir: string): Promise<{
     packages: Array.isArray(list.packages) && list.packages.length > 0 ? list.packages : ['.'],
     hasGoMod: Boolean(list.hasGoMod),
   };
-}
-
-/**
- * Save a file (either base64 binary `data` or UTF-8 `text`) to the filesystem via `/api/fs/save`.
- */
-export async function saveToFilesystem(params: {
-  directory?: string;
-  filename?: string;
-  filePath?: string;
-  data?: string;
-  text?: string;
-  workspaceUris?: string[];
-}): Promise<{ success: boolean; filename: string; path: string; size: number }> {
-  const workspaceUris = params.workspaceUris ?? (await getWorkspaceUris());
-  const res = await sidecarFetch('/api/fs/save', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      directory: params.directory,
-      filename: params.filename,
-      filePath: params.filePath,
-      data: params.data,
-      text: params.text,
-      workspaceUris,
-    }),
-  });
-  if (!res.ok) {
-    const errData = await res.json().catch(() => ({}));
-    throw new Error(errData.error || `Failed to save file to filesystem: HTTP ${res.status}`);
-  }
-  return await res.json();
-}
-
-/**
- * Read a file from the filesystem via `/api/fs/open?file=...&format=json`.
- */
-export async function openFromFilesystem(filePath: string): Promise<{
-  path: string;
-  fileName: string;
-  ext: string;
-  size: number;
-  text?: string;
-  base64: string;
-}> {
-  const res = await sidecarFetch(
-    `/api/fs/open?file=${encodeURIComponent(filePath)}&format=json`,
-    { method: 'GET', cache: 'no-store' }
-  );
-  if (!res.ok) {
-    const errData = await res.json().catch(() => ({}));
-    throw new Error(errData.error || `Failed to open file "${filePath}": HTTP ${res.status}`);
-  }
-  return await res.json();
 }
 

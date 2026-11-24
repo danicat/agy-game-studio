@@ -2,7 +2,7 @@
 
 A `.sprite` file is a plain-text definition that supports two modes:
 
-1. **Sheet-Backed Container Mode (`sheet "..."`)**: Wraps a normalized `.png` sprite sheet (such as `black_cat_anime.png`) with frame size, grid dimensions, and named animation tag ranges. Created automatically by `go run . normalize` and opened directly in the **Sprite tab in Game Dev Studio** (**Sprite Editor**).
+1. **Sheet-Backed Container Mode (`sheet "..."`)**: Wraps a normalized `.png` sprite sheet (such as `hero_cat.png`) with frame size, grid dimensions, and named animation tag ranges. Created automatically by the `sprite_normalize` MCP tool.
 2. **Procedural SDF and Pixel-Art Mode (`part ...`)**: Generates multi-part 2D sprites and seamless tilesets from Signed Distance Field (SDF) shapes, 4-step material ramps, and keyframed `pose` transforms without external image files.
 
 Comments start with `//` or `#` (when not part of a `#RRGGBB` color code).
@@ -11,14 +11,14 @@ Comments start with `//` or `#` (when not part of a `#RRGGBB` color code).
 
 ## 1. Sheet-Backed Container Mode (`sheet "..."`)
 
-When `normalize` processes one or more AI sprite grids, it writes a clean `.png` sheet alongside a `.sprite` container file. You can also author or edit this file by hand in `.sprite` Text mode inside the **Sprite Editor** (`game-dev-studio`).
+When `normalize` processes one or more AI sprite grids, it writes a clean `.png` sheet alongside a `.sprite` container file. You can also author or edit this `.sprite` file directly by hand.
 
-### 1.1 Example: `black_cat_anime.sprite`
+### 1.1 Example: `hero_cat.sprite`
 
 ```text
-title "black_cat_anime"
+title "hero_cat"
 type sprite
-sheet "black_cat_anime.png"
+sheet "hero_cat.png"
 size 256x256
 grid 4x8
 fps 10
@@ -44,7 +44,7 @@ tag attack     28..31 once
 | `grid` | `grid <Cols>x<Rows>` | Number of columns and rows in the backing `.png` sheet (`1..128`, such as `grid 4x8` for 32 frames). |
 | `fps` | `fps <1..120>` | Sprite-wide frame rate in frames per second (default `10`, equivalent to `100ms` per frame). Standardizes frame duration across all tags. |
 | `duration` | `duration <5..10000>ms` | Sprite-wide frame duration in milliseconds (default `100ms`). Alternative to `fps`. |
-| `tag` | `tag <name> [<intro> once,] <from>..<to> <loop>` | Shorthand animation tag mapping 0-based inclusive frame indices, optional lead-in `once` frame(s) (`tag run 8 once, 9..11 loop` or `tag run 8..9 once, 10..13 loop`), and loop mode (`loop`, `once`, `pingpong`, or `reverse`; `forward` is accepted as an alias for `loop`). |
+| `tag` | `tag <name> [<intro> once,] <from>..<to> <loop>` | Shorthand animation tag mapping 0-based inclusive frame indices, optional lead-in `once` frames (`tag run 8 once, 9..11 loop` or `tag run 8..9 once, 10..13 loop`), and loop mode (`loop`, `once`, `pingpong`, or `reverse`; `forward` is accepted as an alias for `loop`). |
 
 Key-value tag attributes (`frames=0..3 loop=pingpong`) and legacy per-tag durations (`0..3 100ms pingpong`) are also accepted for backward compatibility.
 
@@ -116,7 +116,7 @@ Every material ramp has 4 premultiplied steps (`Step 0: Deep Shadow`, `Step 1: B
 
 ### 3.3 Custom Material Ramps (`ramp <name> #shadow #base #light #spec`)
 
-Define custom 4-step ramps at the top level of a `.sprite` file, or extract them from a reference image with `go run . extract-palette character_sheet.png`:
+Define custom 4-step ramps at the top level of a `.sprite` file, or extract them from a reference image with the `sprite_extract_palette` MCP tool (`filePath: "character_sheet.png"`):
 
 ```text
 ramp cat_fur   #100E18 #1C192A #2E2942 #4A4366

@@ -1,177 +1,147 @@
 ---
 name: game-design
 description: >
-  Interactive game design workflow and Game Design Document (GDD) authoring
-  guide for 2D games in the Antigravity 2D Game Studio. Structures game
-  co-creation through one-question-at-a-time interviews, defining core gameplay
-  loops, win and loss conditions, control schemes, visual art direction (retro
-  pixel art to 2D HD via sprite-design and nano-banana), and audio pipelines
-  (procedural-sfx, procedural-music, and lyria) into a clean GDD.md. Activate
-  when conceptualizing a new 2D game, defining gameplay mechanics, conducting
-  game design interviews (/grill-me), or authoring a Game Design Document.
+  Interactive 2D game design workflow and Game Design Document (GDD) authoring
+  guide. Structures co-creation through one-decision-at-a-time interviews
+  covering genre, camera projection, core loops, win/loss rules, controls, 2D HD
+  or pixel-art sprite pipelines, and procedural or AI audio pipelines into
+  GDD.md. Activate when conceptualizing a 2D game, defining mechanics, or
+  authoring a Game Design Document.
 license: Apache-2.0
 metadata:
   category: game-dev
-  tags: "gdd, mechanics, game-dev, game-design, prototyping, ebiten, 2d-games"
+  tags: "gdd, mechanics, gamedev, 2d, prototyping"
   author: Daniela Petruzalek (daniela@danicat.dev)
   version: "0.4.0"
-  catalog: https://skills.danicat.dev
 ---
 
-# Game Design & Interactive GDD Co-Creation Guide (`game-design`)
+# Game design and interactive GDD co-creation
 
-This skill guides you through interactive game design co-creation and produces a clear, actionable **Game Design Document (`GDD.md`)** ready for implementation across the `agy-game-studio` workflow.
+Use this skill to turn a rough game idea into a clear, genre-matched **Game Design Document (`GDD.md`)** before writing engine code or generating assets.
 
 > [!IMPORTANT]
-> **Genre-Agnostic 2D Design Principle**:
-> Never assume a 2D game uses side-scrolling gravity or platforming physics. This workflow supports **every 2D genre**, including:
-> - **Side-Scroller Action / Platformer / Metroidvania** (2D side-profile view, jump arcs, combat hitboxes)
-> - **Top-Down RPG / Adventure / Dungeon Crawler** (3/4 top-down orthographic view, exploration, quests, directional combat)
-> - **Roguelike / Bullet-Heaven / Auto-Shooter / Roguelike Deckbuilder** (run-based progression, procedural encounters, synergy builds)
-> - **Puzzle / Match-3 / Physics & Logic Board Games** (front-facing or grid canvas, discrete move rules, combo chains)
-> - **Vertical & Horizontal Shmup / Twin-Stick Arcade** (high-density projectiles, enemy wave patterns, spatial-hash evasion)
-> - **Turn-Based Strategy / Tactical Grid Games** (orthogonal or hexagonal boards, deterministic action points, unit roles)
-> - **Isometric (`2:1` Dimetric) Strategy / RPG / City-Builder** (`26.565 deg` diamond tiles, `SE`/`SW`/`NE`/`NW` facing, depth sorting)
-> - **Visual Novel / Narrative Adventure** (front-facing character portraits, branching dialogue, evidence/choice gates)
+> **Genre-agnostic 2D design principle**:
+> Never assume a 2D game uses side-scrolling gravity or platforming physics. Support **every 2D genre**, including:
+> - **Side-Scroller Action / Platformer / Metroidvania**: 2D side-profile view, jump arcs, combat hitboxes
+> - **Top-Down RPG / Adventure / Dungeon Crawler**: 3/4 top-down orthographic view, exploration, directional combat
+> - **Roguelike / Bullet-Heaven / Auto-Shooter / Deckbuilder**: run progression, encounter graphs, card or build synergies
+> - **Puzzle / Match-3 / Physics & Logic Board Games**: front-facing or grid canvas, discrete moves, combo chains
+> - **Vertical & Horizontal Shmup / Twin-Stick Arcade**: dense projectiles, wave patterns, spatial-hash evasion
+> - **Turn-Based Strategy / Tactical Grid Games**: orthogonal or hexagonal boards, action points, unit roles
+> - **Isometric (`2:1` Dimetric) Strategy / RPG / City-Builder**: `26.565 deg` diamond tiles, `SE`/`SW`/`NE`/`NW` facing, depth sorting
+> - **Visual Novel / Narrative Adventure**: front-facing character portraits, branching dialogue, choice gates
 >
-> Always tailor your spatial, simulation, control, visual, and audio questions to the user's chosen genre.
+> Always tailor your spatial, control, visual, and audio questions to the user's chosen genre.
 
 ---
 
-## 1. Role in the `agy-game-studio` Ecosystem & Cross-Skill Handoffs
+## Companion skill handoffs
 
-`game-design` turns a rough idea into a concrete blueprint (`GDD.md`) and coordinates cleanly with every skill in the bundle:
+`game-design` produces `GDD.md` for the bundled `agy-game-studio` execution skills, MCP tools, and Game Dev Studio:
 
-| Companion Skill | Relationship & Handoff Responsibility |
+| Companion Skill | Role & Handoff Responsibility |
 | :--- | :--- |
-| **`vibe-game-developer`** | **Entrypoint Orchestrator**: Launches `game-design` during the discovery and specification phase, then sequences asset creation, engine coding, and playtesting from the finished `GDD.md`. |
-| **`ebitengineer`** | **Engine Implementation**: Consumes the `GDD.md` spatial model, virtual canvas size, simulation mode, scene state machine, and zero-allocation hot-loop specs to build the Go + Ebitengine game. |
-| **`sprite-design` + `nano-banana`** | **Visual Art & Sprite Pipeline**: Implements the GDD's camera projection, sprite resolution (**Native 2D HD `256x256`+** vs. **Retro Pixel Art `32x32`/`64x64`**), required animation motion tags, `.sprite` DSL definitions, two-step AI character sheets (`nano-banana` -> `normalize`), and `.aseprite` / `.png`+`.json` exports. |
-| **`procedural-sfx` + `procedural-music` + `lyria`** | **Sound & Music Direction**: Implements the GDD's soundscape using pure-code `.sfx` cues (`procedural-sfx`), polyphonic `.music` scores with YM2612 FM/PSG or macOS CoreAudio synthesis (`procedural-music`), or studio AI soundtrack loops (`lyria`). |
-| **`game-dev-studio`** | **Interactive Visual Workbench & Tuning**: Opens the **Playtest tab** (`sidecar://agy-game-studio/studio/playtest`), **Sound tab / Sound Editor** (`sidecar://agy-game-studio/studio/sound`), and **Sprite tab / Sprite Editor** (`sidecar://agy-game-studio/studio/sprite`) in **Game Dev Studio** for 60 FPS WebAssembly playtesting, 10-second DVR scrubbing, and asset tuning. |
+| **`vibe-game-developer`** | Orchestrates discovery, asset generation, baked `//go:embed` wiring, Ebitengine implementation, and playtesting from `GDD.md`. |
+| **`ebitengineer`** | Implements virtual resolution, spatial/collision rules, simulation timing (`60 TPS`), scene FSM, save storage, and zero-allocation `Draw()` loops. |
+| **`sprite-design`, `nano-banana`** | Delivers sprite resolution (`256x256+` 2D HD vs. `32x32`/`64x64` pixel art), animation tags, two-step AI sheets (`image_generate` -> `sprite_normalize`), or `.sprite` DSL assets (`sprite_compile`). |
+| **`procedural-sfx`, `procedural-music`, `lyria`** | Builds zero-latency `.sfx` sound effects (`sfx_synthesize`), polyphonic `.music` scores (`music_validate` + `music_synthesize`), or `lyria` studio BGM tracks (`music_generate`). |
+| **`game-dev-studio`** | Opens `/playtest` in the Game Dev Studio side panel so the user can launch, scrub, and test WASM builds at 60 FPS. |
 
 ---
 
-## 2. Interactive Co-Creation Protocol (`/grill-me` & `ask_question`)
+## Interactive co-creation protocol
 
-Before writing code or generating assets, align on the creative and technical vision with the user:
+Align on vision and constraints step by step before generating assets or writing Go code:
 
-1. **One Focused Question Batch at a Time**: Use the `ask_question` tool (or the `/grill-me` interview flow) to walk through the design branches step by step. Do not overwhelm the user with a wall of text.
-2. **Lead with a Genre-Matched Recommendation**: For every question, put a concrete, practical recommendation first so the user can accept defaults quickly or customize specifics:
-   - *Deckbuilder / Puzzle*: `1280x720` or `640x360` virtual canvas for sharp card typography, pointer hit-testing rects, and front-facing 2D HD (`256x256`) art.
-   - *Retro Platformer / Shmup / Bullet-Heaven*: `320x180` or `640x360` virtual canvas with `32x32` or `64x64` pixel art, or `1280x720` with `256x256` 2D HD sprites.
-   - *Isometric Strategy / City-Builder*: `1280x720` canvas with `2:1` dimetric diamond grid (`64x32` or `128x64` tiles) and depth-sorted unit sprites.
-3. **Resolve Dependencies in Order**:
-   - Establish **Genre, Camera Perspective, and Core Loop** first.
-   - Define **Win/Loss Conditions and Controls** second.
-   - Lock in **Visual Art Direction, Resolution, and Sprite Pipeline** (`sprite-design` + `nano-banana`) third.
-   - Lock in **Audio & Music Direction** (`procedural-sfx` + `procedural-music` + `lyria`) fourth.
-4. **Write `GDD.md` in the Workspace Root**: Once the user confirms the key choices, compile the complete specification into `GDD.md` following [`references/gdd_template.md`](references/gdd_template.md).
+1. **Ask one decision at a time**: Present one focused question per turn (using multiple-choice prompts when available) so the user can steer cleanly without facing a wall of options.
+2. **Lead with a genre-matched default**: Start each question with a concrete recommendation matched to the chosen genre:
+   - *Deckbuilder / Puzzle / Visual Novel*: `1280x720` or `640x360` virtual canvas for sharp card typography, pointer hit-testing rects, and `256x256` 2D HD art.
+   - *Platformer / Shmup / Bullet-Heaven*: `320x180` or `640x360` virtual canvas with `32x32` or `64x64` pixel art, or `1280x720` with `256x256` 2D HD sprites.
+   - *Isometric Strategy / Builder*: `1280x720` canvas with `2:1` diamond tiles (`64x32` or `128x64`) and depth-sorted sprites.
+3. **Resolve dependencies in order**: Lock in **Genre and Camera Projection** -> **Simulation and Core Loop** -> **Win/Loss Rules and Controls** -> **Visual Style, Resolution, and Sprite Pipeline** -> **Audio and Music Pipeline** -> **Scene Flow, HUD, and Save Storage**.
+4. **Write `GDD.md` in the workspace root**: Synthesize confirmed choices using [`references/gdd_template.md`](references/gdd_template.md).
 
 ---
 
-## 3. Co-Creation Interview Tree
+## Co-creation interview tree
 
-Work through these six branches to build a complete design:
+Work through these six branches in order:
 
 ```text
-Branch 1: Core Concept, 2D Genre & Camera Perspective
-  ├── What is the 1-sentence hook and primary game inspiration?
-  ├── What is the 2D genre?
-  │    ├── Side-Scroller Action / Platformer / Metroidvania
-  │    ├── Top-Down RPG / Adventure / Dungeon Crawler
-  │    ├── Roguelike / Bullet-Heaven / Deckbuilder
-  │    ├── Puzzle / Match-3 / Logic Board Game
-  │    ├── Shmup (Vertical / Horizontal) / Twin-Stick Shooter
-  │    ├── Strategy / Turn-Based Tactics
-  │    └── Isometric (2:1 Dimetric) Strategy / RPG / Builder
-  └── What camera projection matches the genre?
-       ├── 2D Side-Profile
-       ├── 3/4 Top-Down Orthographic
-       ├── Isometric 2:1 (26.565 deg)
-       └── Front-Facing / Straight-On Orthographic (UI / Board / Stage)
+Branch 1: Core Concept, 2D Genre & Camera Projection
+  ├── 1-sentence hook and primary inspiration
+  ├── 2D genre (Side-Scroller, Top-Down RPG, Bullet-Heaven, Deckbuilder, Puzzle, Shmup, Tactics, Isometric 2:1, Visual Novel)
+  └── Camera projection (2D Side-Profile, 3/4 Top-Down Ortho, Isometric 2:1 [26.565 deg], Front-Facing Ortho)
 
-Branch 2: Simulation Model, Core Loop & Win/Loss Conditions
-  ├── How does time advance?
-  │    ├── Real-Time Continuous (60 TPS fixed timestep in Ebitengine)
-  │    ├── Turn-Based / Phase-Driven
-  │    ├── Discrete Grid-Step / Puzzle Move
-  │    └── Event / Narrative-Driven
-  ├── What is the core 30-second gameplay loop? (Player Action -> Systemic Challenge -> Reward/Feedback)
-  └── What exact conditions trigger Victory and Defeat (or end of run)?
+Branch 2: Simulation Model, Core Loop & Win/Loss Rules
+  ├── Time model (Real-Time 60 TPS fixed timestep, Turn-Based, Discrete Grid-Step, Event/Narrative-Driven)
+  ├── Core 30-second loop (Player Action -> Systemic Challenge -> Feedback/Progression)
+  └── Quantitative Victory and Defeat (or narrative ending) conditions
 
 Branch 3: Controls & Input Mapping
-  ├── Which input devices are supported? (Keyboard, Mouse/Pointer, Gamepad, Touch)
-  └── What are the logical game actions? (Move/Navigate, Primary/Confirm, Secondary/Cancel, Special/Inspect, Pause)
+  ├── Target devices (Keyboard, Mouse/Pointer, Gamepad, Touch)
+  └── Logical actions (Navigate/Move, Primary/Confirm, Secondary/Cancel, Special/Inspect, Pause)
 
-Branch 4: Visual Art Direction, Resolution & Sprite Pipeline (sprite-design + nano-banana)
-  ├── What virtual screen resolution fits the game? (e.g., 1280x720 for 2D HD / crisp UI, 640x360 balanced, 320x180 retro pixel)
-  ├── What sprite resolution and aesthetic should we target?
-  │    ├── Option 1: Native 2D HD (256x256 or 512x512 per frame, Recommended Default for rich hand-drawn/cel-shaded detail)
-  │    └── Option 2: Retro Pixel Art (32x32 or 64x64 per frame with crisp binary alpha edges and 4-step material ramps)
-  ├── Which Visual Production Pipeline should we use?
-  │    ├── Path A: Two-Step AI Character Sheet -> Sprite Grid + normalize (nano-banana + sprite-design, best for expressive heroes, bosses, and multi-frame creatures such as black_cat_anime)
-  │    ├── Path B: Pure-Code .sprite DSL (sprite-design SDF/pixel compiler with 12 Retro-HD palettes and 12 4-step material ramps, best for zero-asset builds, geometric mobs, ships, puzzle tokens, projectiles, pickups, and seamless tilesets)
-  │    └── Path C: Hybrid Visual Pipeline (Path A for hero/boss character sheets and backgrounds + Path B .sprite DSL for tilesets, projectiles, pickups, and UI props)
-  └── Which animation motion tags does each character or entity need? (e.g., idle, walk, run, jump, fall, attack, hit, death)
+Branch 4: Visual Art Direction, Resolution & Sprite Pipeline
+  ├── Virtual resolution (1280x720 2D HD/UI, 640x360 balanced, 320x180 retro pixel)
+  ├── Sprite frame tier:
+  │    ├── Option 1: Native 2D HD (256x256 or 512x512, recommended default for hand-drawn/cel-shaded art)
+  │    └── Option 2: Retro Pixel Art (32x32 or 64x64, crisp binary alpha and 4-step material ramps)
+  ├── Visual pipeline mode:
+  │    ├── Path A: Two-Step AI Character Sheet -> 4x4 Chroma Grid (image_generate -> sprite_normalize)
+  │    ├── Path B: Pure-Code .sprite SDF/Pixel DSL (sprite_compile, 12 Retro-HD palettes, 12 4-step material ramps)
+  │    └── Path C: Hybrid (Path A for heroes/bosses/portraits/backgrounds + Path B for tilesets/projectiles/props)
+  └── Entity animation motion tags (e.g., idle, walk, run, jump, fall, attack, hit, death)
 
-Branch 5: Sound Effects & Music Pipeline (procedural-sfx + procedural-music + lyria)
-  ├── How should we produce Sound Effects (SFX)?
-  │    └── Pure-Code Procedural SFX (procedural-sfx .sfx DSL with 18 built-in archetypes, PolyBLEP oscillators, LFSR chiptune noise, SVF filter sweeps, and FM impacts)
-  ├── How should we produce Background Music (BGM)?
-  │    ├── Option A: Pure-Code Procedural Music (procedural-music .music DSL with 8 to 12+ tracks, synthesized via pure-Go SEGA YM2612 FM + SN76489 PSG or native macOS Apple CoreAudio real instruments)
-  │    ├── Option B: AI-Generated Studio Soundtrack (lyria 44.1 kHz stereo music loops)
-  │    └── Option C: Hybrid Audio Pipeline (lyria for atmospheric BGM tracks + procedural-sfx and procedural-music for instant gameplay SFX and fanfare stingers)
-  └── What musical tempo (BPM), mood, instrument palette, and gameplay SFX triggers do we need?
+Branch 5: Audio & Music Pipeline
+  ├── Sound effects (SFX): Pure-code procedural-sfx (.sfx DSL via sound_presets + sfx_synthesize -> baked .wav)
+  ├── Background music (BGM):
+  │    ├── Option A: Pure-code procedural-music (.music DSL via music_validate + music_synthesize: YM2612/PSG or macOS apple: true DLS)
+  │    ├── Option B: AI studio music via lyria (music_generate: lyria-3.5, lyria-3-pro-preview, lyria-3-clip-preview)
+  │    └── Option C: Hybrid (lyria for flagship/ambient themes + procedural-music/.sfx for sample-exact stage loops and cues)
+  └── Tempo (BPM), time signature, key, mood, and SFX trigger map
 
-Branch 6: Scene Flow, HUD & Iterative Playtesting (ebitengineer + game-dev-studio)
-  ├── What scenes and overlays are needed? (Title, Gameplay, Pause/Inventory/Deck Overlay, Victory/Game Over)
-  ├── What HUD elements must stay readable at a glance?
-  └── How will we test and tune gameplay? (Headless Go tests + live 60 FPS WASM testing and 10s DVR scrubbing in game-dev-studio)
+Branch 6: Scene Flow, HUD & Save Persistence
+  ├── Scene FSM & overlays (Boot, Title, Gameplay, Pause/Inventory/Deck/Dialogue, Victory/Game Over)
+  ├── HUD layout anchors (top-left status, top-right score/minimap, bottom action bar)
+  └── Save storage & verification (desktop JSON in os.UserConfigDir() + WASM window.localStorage, or Cloud Run REST leaderboard; go test ./... + Playtest panel in Game Dev Studio)
 ```
 
 ---
 
-## 4. Probing Question Templates & Genre Recommendations
+## Single-decision question templates
 
-Use these concise templates when interviewing the user:
+Ask one prompt at a time instead of stacking unrelated questions together:
 
-### Question 1: Genre, Perspective & Core Loop
-> *"What is the 1-sentence hook for your game, which 2D genre and camera view does it use, and is the action real-time or turn-based?"*
-> - **Side-Scroller Action / Platformer**: 2D side-profile view, 60 TPS real-time physics with responsive jump apex control, coyote time, and melee/ranged combat.
-> - **Top-Down RPG / Roguelike / Bullet-Heaven**: 3/4 top-down orthographic view, 360-degree or 8-way movement, dungeon rooms or arena survival waves.
-> - **Puzzle / Deckbuilder / Strategy**: Front-facing board, orthogonal grid, or isometric `2:1` diamond map with turn-based or move-driven state transitions.
+### Prompt 1: Core hook and 2D genre
+> *"What is the 1-sentence hook for your game, and which 2D genre fits best?"*
+> - **Recommendation**: *"Pick one clear focus such as a top-down bullet-heaven, an 8x8 turn-based tactics game, a roguelike deckbuilder, or a side-scrolling action platformer."*
 
-### Question 2: Win/Loss Thresholds & Session Pacing
-> *"How does a match or run progress, what triggers victory, and what triggers defeat?"*
-> - **Recommended Default**: Define clear, testable numbers right away (for example: survive 3 escalating waves and defeat the stage boss with HP > 0; clear 5 puzzle stages within the move limit; or capture all tactical objectives before turn 15).
+### Prompt 2: Camera projection and simulation pace
+> *"Should the game use real-time `60 TPS` action or turn/move-based pacing, and which camera angle (`2D side-profile`, `3/4 top-down`, `2:1 isometric`, or `front-facing`) fits best?"*
+> - **Recommendation**: *"Use `3/4 top-down` or `2D side-profile` at fixed `60 TPS` for arcade action, or `front-facing` / `2:1 isometric` with discrete turns for puzzle and tactical games."*
 
-### Question 3: Art Style, Resolution & Sprite Pipeline (`sprite-design` + `nano-banana`)
-> *"What visual style and sprite resolution do you want, and should we generate sprites with the Two-Step AI pipeline (`nano-banana` + `sprite-design`), pure-code `.sprite` DSL, or a Hybrid mix?"*
-> - **Recommended Default (Hybrid or Two-Step 2D HD)**: Use a `1280x720` virtual canvas with **Native 2D HD (`256x256`)** character sprites created via `nano-banana` turnaround sheets and normalized into `.aseprite`/`.png`+`.json` via `sprite-design`, paired with `.sprite` DSL for pickups, projectiles, and tiles.
-> - **Retro Pixel Option**: Use a `320x180` or `640x360` virtual canvas with **`32x32` or `64x64` pixel art** and 12 curated Retro-HD palettes in `sprite-design`.
+### Prompt 3: Core loop and win/loss thresholds
+> *"What triggers victory, what causes defeat, and how long should a single run or stage take?"*
+> - **Recommendation**: *"Set testable numeric targets upfront, such as surviving 3 escalating waves and defeating a stage boss with HP above 0, or solving 5 puzzle boards within par moves."*
 
-### Question 4: Audio & Music Direction (`procedural-sfx` + `procedural-music` + `lyria`)
-> *"For audio, what musical style and tempo fit your world, and do you prefer procedural `.music` synthesis (YM2612 FM / Apple CoreAudio) or AI-generated `lyria` tracks alongside your `.sfx` cues?"*
-> - **Recommended Default**: Use `procedural-sfx` for zero-latency gameplay sound effects (`laser_arcade`, `jump_arcade`, `sword_clash`, `coin_pickup`, `ui_confirm`) and `procedural-music` (`.music` DSL with YM2612 16-bit synth or `-apple` CoreAudio real instruments) for original multi-track stage themes and boss music. Use `lyria` when the user wants streamed acoustic or ambient studio audio loops.
+### Prompt 4: Visual style, sprite resolution, and pipeline
+> *"Which sprite tier (`256x256` Native 2D HD vs. `32x32`/`64x64` pixel art) and asset pipeline (`Path A: nano-banana + sprite_normalize`, `Path B: .sprite DSL`, or `Path C: Hybrid`) should we use?"*
+> - **Recommendation**: *"Use a `1280x720` virtual canvas with `Path C (Hybrid)`: generate `256x256` 2D HD heroes and backgrounds via `image_generate` + `sprite_normalize`, and author tilesets, projectiles, and pickups in `.sprite` DSL (`sprite_compile`)."*
 
----
-
-## 5. Template & Reference Files
-
-| Module | Reference File | Purpose |
-| :--- | :--- | :--- |
-| **GDD Template** | [`references/gdd_template.md`](references/gdd_template.md) | 7-section Game Design Document template covering pitch, genre/camera projection, core loop, controls, `sprite-design` + `nano-banana` visual specs, `procedural-sfx` + `procedural-music` + `lyria` audio specs, scene flow, and `ebitengineer` + `game-dev-studio` integration notes. |
+### Prompt 5: Sound effects and background music
+> *"Do you prefer pure-code `.sfx` + `.music` synthesis (YM2612 chiptune or macOS CoreAudio DLS), AI-generated `lyria` music tracks, or a hybrid mix?"*
+> - **Recommendation**: *"Use `procedural-sfx` (`sfx_synthesize`) for zero-latency gameplay SFX and `procedural-music` (`music_synthesize`) for sample-exact stage loops, or pair `lyria` (`music_generate` in `.wav` on `lyria-3.5`) for studio orchestral or vocal themes."*
 
 ---
 
-## 6. Pre-Handoff Checklist
+## Template and pre-handoff checklist
 
-Before handing `GDD.md` off to `vibe-game-developer`, `ebitengineer`, `sprite-design`, `nano-banana`, `procedural-sfx`, `procedural-music`, or `game-dev-studio`, verify:
+Compile confirmed decisions into `GDD.md` using [`references/gdd_template.md`](references/gdd_template.md) and verify:
 
-- [ ] **Genre, Camera Projection & Simulation Defined**: Explicitly states the 2D genre, camera angle (Side-Profile, 3/4 Top-Down, Isometric `2:1`, or Front-Facing), and simulation model without unstated platformer assumptions.
-- [ ] **Core Loop & Win/Loss Quantified**: Lists player actions, systemic challenges, and exact numerical win/loss conditions.
-- [ ] **Controls Mapped**: Binds logical game actions to Keyboard, Mouse/Pointer, Gamepad, or Touch.
-- [ ] **Visual Pipeline & Motion Tags Specified**: Documents virtual canvas dimensions, sprite frame resolution (`256x256` 2D HD vs. `32x32`/`64x64` pixel art), pipeline choice (`sprite-design` `.sprite` DSL, `nano-banana` + `sprite-design` normalize, or Hybrid), and exact animation tags per entity.
-- [ ] **Audio Pipeline & Cues Specified**: Lists all `.sfx` triggers for `procedural-sfx` and the BGM plan (`procedural-music` `.music` score with tempo/palette or `lyria` tracks).
-- [ ] **Saved & Ready for Studio**: Written to `GDD.md` in the workspace root, with a reminder that assets and builds can be inspected live in `game-dev-studio` (the **Playtest tab**, **Sound Editor**, and **Sprite Editor** in **Game Dev Studio**).
+- [ ] **Genre, camera projection, and simulation model locked**: No unstated platformer or side-view gravity assumptions.
+- [ ] **Core loop and numeric win/loss rules defined**: Victory, defeat, and run pacing are testable.
+- [ ] **Controls mapped**: Logical actions cover Keyboard, Mouse/Pointer, Gamepad, or Touch targets.
+- [ ] **Visual pipeline and animation tags specified**: States virtual resolution, frame tier (`256x256` 2D HD vs. `32x32`/`64x64` pixel art), pipeline path (`A`, `B`, or `C`), and exact motion tags per entity.
+- [ ] **Audio and music plan specified**: Lists `.sfx` cues and `.music` (YM2612/`apple`) or `lyria` BGM tracks, baked to `.wav`/`.mp3` for `//go:embed`.
+- [ ] **Persistence and verification ready**: Specifies desktop/WASM storage (`os.UserConfigDir()` + `localStorage`) or Cloud Run leaderboard, saves `GDD.md` in the workspace root, and plans playtesting in `/playtest`.

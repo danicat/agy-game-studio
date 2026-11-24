@@ -1,186 +1,165 @@
 ---
 name: sprite-design
 description: >
-  Complete guide and .sprite engine for 2D game sprites, tilesets, and frame
-  animations in Ebitengine. Covers the 2-step AI Character Sheet to Sprite Grid
-  pipeline with nano-banana, chroma-key normalization into .sprite, .aseprite,
-  .png, and .json containers, procedural SDF and pixel-art .sprite definitions,
-  the Sprite Editor (Sprite tab in Game Dev Studio) visual and text workbench,
-  and zero-allocation AnimationController state machines.
+  2D game sprite design, chroma-key grid normalization, and procedural .sprite
+  DSL workflow using the game-studio MCP server. Covers sprite_inspect,
+  sprite_compile, sprite_normalize, sprite_extract_palette, and image_generate
+  to export baked .png, .json, .aseprite, and .sprite assets for //go:embed
+  playback in Ebitengine.
 license: Apache-2.0
 metadata:
   category: game-dev
-  tags: "sprites, pixel-art, tilesets, animation, aseprite, sdf, sprite-dsl, ebiten, gamedev, go"
+  tags: "sprites, animation, pixel-art, tilesets, aseprite, sdf"
   author: Daniela Petruzalek (daniela@danicat.dev)
   version: "0.4.0"
-  catalog: https://skills.danicat.dev
 ---
 
-# 2D Sprite Design, Normalization & Frame Animation (`sprite-design`)
+# 2D sprite design, normalization, and frame animation
 
-`sprite-design` turns character designs and procedural definitions into game-ready 2D sprite containers (`.sprite`, `.aseprite`, `.png`, and `.json`) and drives them at 60 FPS in Ebitengine with zero heap allocations during `Draw()`.
+`sprite-design` turns character designs and procedural `.sprite` rules into baked, game-ready 2D sprite assets (`.png`, `.json`, `.aseprite`, and `.sprite`) using the **`game-studio` MCP server**, then loads them at 60 FPS in Ebitengine via `//go:embed` without heap allocations in `Draw()`.
 
-> [!TIP]
-> **Reference Specifications**:
-> - **`.sprite` Container & Procedural DSL Guide**: [`references/dsl-reference.md`](references/dsl-reference.md)
-> - **Binary Aseprite (`.aseprite`) & GIMP Palette (`.gpl`) Spec**: [`references/aseprite_format.md`](references/aseprite_format.md)
-> - **Reference Workspace Sprite Bundle**: `skills/sprite-design/scripts/black_cat_anime.sprite` (paired with `black_cat_anime.png`, `black_cat_anime.aseprite`, and `black_cat_anime.json`)
+- **`.sprite` container and procedural DSL spec**: [`references/dsl-reference.md`](references/dsl-reference.md)
+- **Binary Aseprite and `.gpl` palette spec**: [`references/aseprite_format.md`](references/aseprite_format.md)
 
 ---
 
-## 1. Cross-Skill Workflow & Headless CLI Autonomy
+## Companion skills
 
-`sprite-design` works alongside five companion skills with clear boundaries:
-
-| Skill | Role in the Sprite & Game Pipeline |
+| Skill | Role in the sprite pipeline |
 | :--- | :--- |
-| **`vibe-game-developer`** | Orchestrates end-to-end game builds, delegating character and tileset production to `sprite-design` and surfacing **Sprite Editor** (`game-dev-studio`) pills at each milestone. |
-| **`game-design`** | Defines player mechanics, state transitions, hitbox timing, camera projection, and visual readability targets that determine which animation tags a sprite needs. |
-| **`nano-banana`** | Generates the Step 1 character reference sheet and the raw Step 2 `4x4` chroma-key animation grids before `sprite-design` normalizes them. |
-| **`sprite-design` (this skill)** | Normalizes raw AI sprite grids, compiles `.sprite` container and procedural SDF files, validates visual QA invariants, exports `.aseprite` and `.png`+`.json` bundles, and provides Ebitengine's `GridSpriteSheet` and `AnimationController`. |
-| **`ebitengineer`** | Integrates `GridSpriteSheet` and `AnimationController` into the fixed-timestep 60 TPS `Update()` loop, camera `GeoM` pipeline, Kage shaders, and particle pools. |
-| **`game-dev-studio`** | Opens the optional **Sprites** tab (`sidecar://agy-game-studio/studio/sprite`) for inspecting `.sprite` and `.aseprite` containers and sending per-frame feedback notes. |
-
-> [!NOTE]
-> **100% Headless CLI Autonomy**:
-> Every command in `skills/sprite-design/scripts/` runs directly from the terminal (`go run . normalize`, `go run . validate`, `go run . export`, `go run . extract-palette`, `go run . inspect-json`, `go run . synth-json`, and `go test -v ./...`) without requiring the sidecar UI.
+| **`vibe-game-developer`** | Orchestrates end-to-end game builds and delegates character and tileset production to `sprite-design`. |
+| **`game-design`** | Defines player mechanics, animation tag budgets, hitbox timing, and camera projection before sprite creation. |
+| **`nano-banana`** | Generates the Step 1 character reference sheet and raw Step 2 `4x4` chroma-key grids via `image_generate`. |
+| **`ebitengineer`** | Embeds baked `.png`/`.json` or `.aseprite` outputs via `//go:embed` and drives `AnimationController` inside `Update()` and `Draw()`. |
 
 ---
 
-## 2. The Two-Step AI Sprite Generation Pipeline (Primary Workflow)
+## Bundled `game-studio` MCP sprite tools
 
-Generating a multi-frame sprite sheet in a single prompt often fails because the image model tries to invent character proportions and maintain frame-to-frame consistency at the same time. Splitting character design (Step 1) from animation grid generation and deterministic normalization (Step 2) solves this across every resolution and genre.
+Run all sprite inspection, compilation, normalization, and palette extraction directly through the `game-studio` MCP server (no external scripts needed):
 
-### 2.0 Step 0: Clarify Motions, Camera Angle, Resolution & Path (`ask_question`)
-
-Before generating a character, creature, enemy, or game piece, ask the user (using `ask_question` when available) to confirm any of these four choices not already specified in their prompt:
-
-1. **Animation Motions (`tag` names)** matched to the genre:
-   - **Side-Scroller / Platformer / Metroidvania**: `idle`, `walk`, `run`, `jump` (with explicit mid-air apex pose), `fall`, `crouch`, `sleep`, `attack`, `hit`, `death`.
-   - **Top-Down RPG / Adventure / Twin-Stick**: `idle`, `walk`, `run`, `interact`, `attack`, `cast`, `hit`, `ko` (side-mirrored or 4-way `down`, `up`, `side`).
-   - **Isometric (`2:1` Dimetric) Strategy / Tactics**: `idle`, `move`, `action`, `selected`, `damaged` along `SE`, `SW`, `NE`, `NW` diagonals.
-   - **Puzzle / Match-3 / Card / Shmup**: `idle`, `hover` / `bank`, `activate` / `boost`, `combo_glow`, `shatter` / `burst`.
-2. **Camera Angle & Projection**:
-   - **2D Side-Profile** (platformers, run-and-gun, beat-'em-ups).
-   - **3/4 Top-Down Orthographic** (RPGs, dungeon crawlers, action-adventures, vertical shmups).
-   - **Isometric `2:1` (`26.565 deg`)** (tactical RPGs, city-builders, strategy games).
-   - **Front-Facing Ortho** (puzzle tokens, card battlers, turn-based RPG enemies).
-3. **Target Frame Resolution**:
-   - **`256x256` Native 2D HD (Recommended Default)**: Preserves full hand-drawn or cel-shaded `1024x1024` `4x4` cell resolution with smooth premultiplied alpha edges and zero downsampling blur.
-   - **`128x128` Mid-Res HD**: Compact HD sprites for crowded action arenas or shmups.
-   - **`64x64` or `32x32` Retro Pixel Art**: Downsamples or rasterizes onto a crisp pixel grid with binary alpha edges (`-fw 64 -fh 64` or `-fw 32 -fh 32`).
-4. **Production Path**:
-   - **Path A (2-Step AI Character Sheet -> Sprite Grid + `normalize`)**: Best for expressive characters, creatures, companions, and bosses.
-   - **Path B (Procedural `.sprite` DSL)**: Best for geometric mobs, projectiles, pickups, props, and seamless tilesets.
-
-### 2.1 Step 1: Generate the Character Reference Sheet (`nano-banana`)
-
-Use `nano-banana` (`uv run skills/nano-banana/scripts/banana.py` or `gemini-api image`, or the `image-generator` subagent) to create a turnaround or design reference sheet first whenever building a hero, boss, companion, NPC, or multi-part enemy:
-
-```bash
-# Via uv + banana.py (supports both Vertex AI / Gemini Enterprise ADC and GEMINI_API_KEY)
-uv run skills/nano-banana/scripts/banana.py \
-  -p "2D game character reference sheet of a black anime cat hero, 1:2 head-to-body ratio, 2D side-profile gameplay angle, clear limb and tail separation, with a printed 4-step color swatch bar" \
-  -m "nano-banana-2.1" -r "2K" -a "1:1" -f "character_sheet.png"
-
-# Or via gemini-api CLI
-gemini-api image \
-  "2D game character reference sheet of a black anime cat hero, 1:2 head-to-body ratio, 2D side-profile gameplay angle, clear limb and tail separation, with a printed 4-step color swatch bar" \
-  --model "gemini-nano-banana-2.1" --image-size "2K" --aspect-ratio "1:1" --out "character_sheet.png"
-```
-
-> [!CAUTION]
-> **Fail Fast on Auth Errors (Never Go Rogue)**:
-> If `gemini-api` fails due to missing OAuth scopes or credentials, use `uv run skills/nano-banana/scripts/banana.py` for native Vertex AI / Gemini Enterprise Application Default Credentials (`GOOGLE_CLOUD_PROJECT` + `GOOGLE_CLOUD_LOCATION`) or `GEMINI_API_KEY`. If credentials are still missing or invalid, **fail fast and stop immediately** with a clear remediation message. Never fabricate placeholder images, silently switch pipelines, or go rogue trying to bypass authentication checks.
-
-1. **Readable Game Proportions (`1:2` to `1:3` Head-to-Body Ratio)**: Keeps the face, eyes, ears, and silhouette distinct at gameplay scale across `256x256`, `128x128`, `64x64`, and `32x32`.
-2. **Exact Genre Camera Angle**: Draw the reference poses in the exact projection used in gameplay (side-profile, 3/4 top-down, isometric `2:1`, or front-facing).
-3. **Clear Silhouette Separation**: Pose limbs, tails, capes, and weapons slightly away from the torso so joint pivots and silhouettes read cleanly.
-4. **Printed 4-Step Color Swatch Bar**: Include a solid 4-step color ramp (`Shadow -> Base -> Light -> Specular`) for each primary material so Step 2 locks exact colors.
-
-*(Skip Step 1 and go straight to Path B `.sprite` DSL for simple slimes, drones, projectiles, coins, chests, or tilesets.)*
-
-### 2.2 Step 2: Generate the Raw `4x4` Sprite Grid & Run `normalize`
-
-Pass the Step 1 character sheet as an image reference (`-i` in `uv run skills/nano-banana/scripts/banana.py` or `gemini-api image`) to generate uniform `4x4` animation grids (`1024x1024` for `256x256` frames) on a flat `#00FF00` bright green or `#FF00FF` magenta chroma-key background with **no grid lines, no borders, and no text labels**. For 8 motions (`32` frames, such as `black_cat_anime`), generate two `4x4` grids (`4` motions per grid, `4` frames per row) and pass both files to `normalize`.
-
-```bash
-# Via uv + banana.py (supports Vertex AI / Gemini Enterprise ADC and GEMINI_API_KEY)
-uv run skills/nano-banana/scripts/banana.py \
-  -p "Uniform 4x4 2D sprite sheet grid on a flat #00FF00 chroma-key background, no grid lines or labels, at least 15% empty #00FF00 margin inside every cell. Row 1: 4-frame idle breathing. Row 2: 4-frame walk cycle. Row 3: 4-frame run cycle. Row 4: 4-frame jump arc (crouch anticipation, upward launch, rising ascent, horizontal mid-air apex suspension)." \
-  -i "character_sheet.png" -m "nano-banana-2.1" -r "1K" -a "1:1" -f "raw_grid_part1.png"
-
-# Or via gemini-api CLI
-gemini-api image \
-  "Uniform 4x4 2D sprite sheet grid on a flat #00FF00 chroma-key background, no grid lines or labels, at least 15% empty #00FF00 margin inside every cell. Row 1: 4-frame idle breathing. Row 2: 4-frame walk cycle. Row 3: 4-frame run cycle. Row 4: 4-frame jump arc (crouch anticipation, upward launch, rising ascent, horizontal mid-air apex suspension)." \
-  -i "character_sheet.png" --model "gemini-nano-banana-2.1" --image-size "1K" --aspect-ratio "1:1" --out "raw_grid_part1.png"
-```
-
-Enforce two mandatory layout rules in every Step 2 image generation prompt:
-
-1. **Strict 15% Cell Safety Margin (Zero Border Bleed)**:
-   Instruct the generator to leave at least **15% (`38px+` on a `256x256` cell) of empty `#00FF00` chroma-key margin** on all four sides of every character inside its cell. Tails, ears, weapons, and low paws in Row 3 must never touch or cross into Row 4.
-2. **Complete Parabolic Jump Arc with Explicit Mid-Air Apex Frame**:
-   Whenever generating a 4-frame `jump` row, specify all four phases explicitly so the transition into `fall` feels natural:
-   - **Frame 1 (`crouch anticipation`)**: Coiled low on the ground gathering energy to spring.
-   - **Frame 2 (`upward launch`)**: Springing steeply upward off the ground with extended hind legs.
-   - **Frame 3 (`rising ascent`)**: Airborne rising upward, front paws or arms reaching up.
-   - **Frame 4 (`mid-air peak / apex suspension`)**: Horizontal floating body at the top of the jump arc where upward velocity reaches zero before reversing into `fall`, with legs or paws tucked underneath and head level.
-
-#### Deterministic Normalization into `.sprite` + `.aseprite` + `.png` + `.json`
-
-Run `go run . normalize` from `skills/sprite-design/scripts/`. The normalizer splits rows and columns along empty gutters, stripsdisconnected border bleed via connected-component pruning (`findMainBodyAndFullBBox`), unmixes chroma-key edges into premultiplied RGBA ($R, G, B \le A$), centers and grounds each frame while preserving airborne jump/fall height, and automatically writes the `.sprite` container file alongside `-out`:
-
-```bash
-cd skills/sprite-design/scripts
-
-# Native 256x256 2D HD (omit -fw and -fh to preserve native cell resolution w/cols x h/rows)
-go run . normalize -cols 4 -rows 4 -center=true -ground=true -pad 8 \
-  -tag idle:0:3:100:pingpong \
-  -tag walk:4:7:100:loop \
-  -tag run:8:11:100:loop:9 \
-  -tag jump:12:15:100:once \
-  -tag fall:16:19:100:loop \
-  -tag crouch:20:23:100:once \
-  -tag sleep:24:27:100:pingpong \
-  -tag attack:28:31:100:once \
-  -out black_cat_anime.png \
-  -sprite black_cat_anime.sprite \
-  -json black_cat_anime.json \
-  -aseprite black_cat_anime.aseprite \
-  -preview /tmp/black_cat_preview.png \
-  -gif-dir /tmp/black_cat_gifs -gif-prefix black_cat \
-  raw_grid_part1.png raw_grid_part2.png
-
-# Retro 64x64 or 32x32 Pixel Art (pass explicit -fw and -fh to downsample with crisp binary alpha edges)
-go run . normalize -fw 64 -fh 64 -cols 4 -rows 4 -center=true -ground=true -pad 3 \
-  -tag idle:0:3:100:pingpong \
-  -tag walk:4:7:100:loop \
-  -tag run:8:11:100:loop:9 \
-  -tag jump:12:15:100:once \
-  -out cat_64.png -sprite cat_64.sprite -json cat_64.json -aseprite cat_64.aseprite \
-  -preview /tmp/cat_64_preview.png -gif-dir /tmp/cat_64_gifs -scale 4 \
-  raw_grid_part1.png
-```
-
-> [!IMPORTANT]
-> **Mandatory Visual Self-Check (`read_file`)**:
-> Always export `-preview` and `-gif-dir` when generating or normalizing a sprite, inspect the preview PNG and per-motion GIFs with `read_file` to verify stable baselines, complete jump arcs, and zero cell bleed, and embed the per-motion GIFs in your response or artifact.
+| MCP Tool | Key Arguments | Purpose |
+| :--- | :--- | :--- |
+| **`sprite_inspect`** | `filePath` (req), `frameWidth`, `frameHeight`, `cols`, `rows`, `jsonPath`, `outPngPath` | Inspects a `.sprite`, `.aseprite`/`.ase`, or `.png` sheet, returns full QA metrics (`passed`, `fillRatioPct`, `centerOfMassX`, `luminanceSteps`, `premultipliedClean`, `tags`, `issues`), and optionally exports a rendered PNG. |
+| **`sprite_compile`** | `dsl`, `filePath`, `baseDir`, `outPngPath`, `outJsonPath`, `outAsepritePath`, `outPreviewPath`, `outGifDir`, `gifPrefix`, `scale` (`1..16`) | Compiles a `.sprite` script (either sheet-backed or procedural SDF/pixel `part` blocks) and writes baked `.png`, `.json` manifest, `.aseprite`, preview PNG, and per-tag `.gif` previews. |
+| **`sprite_normalize`** | `filePath` or `filePaths`, `frameWidth`, `frameHeight`, `cols`, `rows`, `tolerance` (`0..255`, default `18`), `center` (default `true`), `ground` (default `false`), `pad` (default `2`), `durationMs` (default `100`), `tags`, `outPngPath`, `outJsonPath`, `outSpritePath`, `outAsepritePath`, `outPreviewPath`, `outGifDir`, `gifPrefix`, `scale` | Strips chroma-key backgrounds, removes edge bleed, aligns and grounds frames into premultiplied RGBA (`R, G, B <= A`), and exports normalized `.png`, `.json`, `.sprite`, `.aseprite`, preview PNG, and per-tag `.gif` previews. |
+| **`sprite_extract_palette`** | `filePath` (req), `numRamps` (`1..12`, default `4`) | Extracts 4-step material shading ramps (`Shadow -> Base -> Light -> Specular`) from a reference character sheet PNG or JPEG as ready-to-paste `.sprite` DSL `ramp` lines. |
 
 ---
 
-## 3. The `.sprite` Format: Sheet Containers & Procedural SDF
+## Two-step AI sprite generation pipeline (`image_generate` + `sprite_normalize`)
 
-A `.sprite` file is the unified text entry point for both normalized AI sprite sheets and pure-code procedural art. See [`references/dsl-reference.md`](references/dsl-reference.md) for the complete grammar, 12 Retro-HD palettes, 12 material ramps, SDF primitives, and transformation math.
+Generating a full sprite sheet in one prompt fails when an image model tries to invent a character and keep 16 frames consistent at once. Split character design (Step 1) from animation grid generation and normalization (Step 2).
 
-### 3.1 Mode 1: Sheet-Backed `.sprite` Container (`black_cat_anime.sprite`)
+### Step 0: Confirm motions, projection, resolution, and path
 
-Generated automatically by `normalize` (or written by hand), a container `.sprite` file links a packed `.png` atlas or binary `.aseprite` file to its frame size, grid layout, standardized sprite-wide frame rate (`fps 10` or `duration 100ms`), and animation tags (including optional lead-in `once` frames like `tag run 8 once, 9..11 loop`):
+Before creating an asset, confirm any detail missing from the request:
+
+1. **Animation tags (`tags`)**:
+   - Side-scroller or platformer: `idle`, `walk`, `run`, `jump` (with mid-air apex pose), `fall`, `crouch`, `attack`, `hit`, `death`.
+   - Top-down RPG or twin-stick: `idle`, `walk`, `run`, `interact`, `attack`, `cast`, `hit`, `ko`.
+   - Isometric `2:1` tactics: `idle`, `move`, `action`, `selected`, `damaged` across `SE`, `SW`, `NE`, `NW`.
+   - Puzzle, card, or arcade shooter: `idle`, `hover` or `bank`, `activate` or `boost`, `combo_glow`, `burst`.
+2. **Camera projection**: `2D side-profile`, `3/4 top-down`, `isometric 2:1 (26.565 deg)`, or `front-facing ortho`.
+3. **Target frame resolution**: `256x256` Native 2D HD (default, omit `frameWidth`/`frameHeight` to preserve `w/cols x h/rows`), `128x128` compact HD, or `64x64` / `32x32` pixel art (`frameWidth: 64, frameHeight: 64` or `32`).
+4. **Production path**: Path A (`image_generate` + `sprite_normalize`) for expressive heroes and bosses; Path B (procedural `.sprite` DSL + `sprite_compile`) for slimes, projectiles, pickups, and seamless tilesets.
+
+### Step 1: Generate the character reference sheet (`image_generate`)
+
+Invoke `image_generate` to build a turnaround character sheet first:
+
+```json
+{
+  "tool": "image_generate",
+  "arguments": {
+    "prompt": "2D game character reference sheet of a black anime cat hero, 1:2 head-to-body ratio, 2D side-profile gameplay angle, clear limb and tail separation, printed 4-step color swatch bar on neutral gray background",
+    "outPath": "assets/raw/character_sheet.png",
+    "model": "nano-banana-2.1",
+    "resolution": "2K",
+    "aspectRatio": "1:1"
+  }
+}
+```
+
+Include four traits in every Step 1 prompt:
+1. **`1:2` to `1:3` head-to-body ratio**: Keeps eyes, silhouettes, and readability crisp at both HD and `64x64` / `32x32` scales.
+2. **Exact gameplay projection**: Match the game camera angle (`side-profile`, `3/4 top-down`, `isometric 2:1`, or `front-facing`).
+3. **Clear limb and silhouette separation**: Keep arms, tails, capes, and weapons slightly away from the torso.
+4. **Printed 4-step color swatch bar**: Lock exact `Shadow -> Base -> Light -> Specular` tones for Step 2 consistency (and optionally extract them with `sprite_extract_palette`).
+
+If `image_generate` fails due to missing credentials or auth errors, stop immediately and report the exact error. Never substitute placeholder squares or bypass credentials.
+
+### Step 2: Generate `4x4` chroma-key grids and normalize (`sprite_normalize`)
+
+Pass `assets/raw/character_sheet.png` in `inputImages` to `image_generate` to create uniform `4x4` animation grids on flat `#00FF00` bright green or `#FF00FF` magenta with no grid lines, borders, or text labels. For eight motions (`32` frames), generate two `4x4` grids (`4` motions each) and pass both in `filePaths` to `sprite_normalize`.
+
+```json
+{
+  "tool": "image_generate",
+  "arguments": {
+    "prompt": "Keep the exact character identity and color swatches from the reference sheet. Uniform 4x4 2D sprite sheet grid on a flat unlit #00FF00 chroma-key background, no grid lines or labels, at least 15% empty #00FF00 margin inside every cell. Row 1: 4-frame idle breathing. Row 2: 4-frame walk cycle. Row 3: 4-frame run cycle. Row 4: 4-frame jump arc (crouch anticipation, upward launch, rising ascent, horizontal mid-air apex suspension).",
+    "inputImages": ["assets/raw/character_sheet.png"],
+    "outPath": "assets/raw/raw_grid_part1.png",
+    "model": "nano-banana-2.1",
+    "resolution": "1K",
+    "aspectRatio": "1:1",
+    "thinkingLevel": "high"
+  }
+}
+```
+
+Enforce two rules in every Step 2 prompt:
+- **15% empty cell margin**: Leave at least `15%` empty `#00FF00` padding on all four sides of every cell so tails, ears, and weapons never cross boundaries.
+- **Complete 4-frame jump arc**: Specify `crouch anticipation`, `upward launch`, `rising ascent`, and `horizontal mid-air apex` so `jump` transitions smoothly into `fall`.
+
+Then call `sprite_normalize` to strip chroma backgrounds, trim bleed, unmix fringes into premultiplied RGBA, center horizontally, ground frames, and bake the `.png`, `.json`, `.sprite`, `.aseprite`, preview PNG, and per-tag `.gif` files:
+
+```json
+{
+  "tool": "sprite_normalize",
+  "arguments": {
+    "filePaths": ["assets/raw/raw_grid_part1.png", "assets/raw/raw_grid_part2.png"],
+    "cols": 4,
+    "rows": 4,
+    "center": true,
+    "ground": true,
+    "pad": 8,
+    "durationMs": 100,
+    "tags": [
+      "idle:0:3:100:pingpong",
+      "walk:4:7:100:loop",
+      "run:8:11:100:loop",
+      "jump:12:15:100:once",
+      "fall:16:19:100:loop",
+      "crouch:20:23:100:once",
+      "sleep:24:27:100:pingpong",
+      "attack:28:31:100:once"
+    ],
+    "outPngPath": "internal/assets/sprites/hero_cat.png",
+    "outJsonPath": "internal/assets/sprites/hero_cat.json",
+    "outSpritePath": "assets/sprites/hero_cat.sprite",
+    "outAsepritePath": "internal/assets/sprites/hero_cat.aseprite",
+    "outPreviewPath": "assets/previews/hero_cat_preview.png",
+    "outGifDir": "assets/previews/gifs"
+  }
+}
+```
+
+- For retro pixel art (`64x64` or `32x32`), also pass `"frameWidth": 64, "frameHeight": 64` (and `"scale": 4` for magnified preview/GIF outputs).
+- Always inspect `outPreviewPath`, `outGifDir`, and the QA fields in the tool report before embedding the sheet into your game to catch baseline drift, cropped limbs, or cell bleed.
+
+---
+
+## The `.sprite` format: sheet containers and procedural SDF
+
+### Sheet-backed container (`sheet "..."`)
+
+Written automatically by `sprite_normalize` or edited by hand, a container `.sprite` links an atlas `.png` or `.aseprite` to its frame size, grid layout, `fps` or `duration`, and tag ranges (including optional lead-in `once` frames like `tag run 8 once, 9..11 loop`):
 
 ```text
-title "black_cat_anime"
+title "hero_cat"
 type sprite
-sheet "black_cat_anime.png"
+sheet "hero_cat.png"
 size 256x256
 grid 4x8
 fps 10
@@ -195,197 +174,100 @@ tag sleep      24..27 pingpong
 tag attack     28..31 once
 ```
 
-### 3.2 Mode 2: Procedural SDF & Pixel-Art `.sprite` Definition
+### Procedural SDF and pixel-art definition (`part ...`)
 
-When a `.sprite` file contains Z-ordered `part` blocks instead of `sheet "..."`, the compiler evaluates 2D Signed Distance Fields (`circle`, `box`, `capsule`, `ring`, `poly`, `line`, `pixel`), shades surface normals across 4-step material ramps (`shadow`, `base`, `light`, `specular`), stamps a 1-pixel outer outline, and animates parts via `pose` transforms (`dx`, `dy`, `rot`, `scale`, volume-preserving `squash`, `visible`, and `ease`):
+When a `.sprite` script omits `sheet` and defines Z-ordered `part` blocks instead, `sprite_compile` evaluates 2D Signed Distance Fields (`circle`, `box`, `capsule`, `ring`, `poly`, `line`, `pixel`), shades normals across 4-step material ramps, adds a 1px outline for sprites (none for seamless `type tileset`), and animates parts via `pose` transforms (`dx`, `dy`, `rot`, `scale`, `squash`, `visible`, `ease`):
 
 ```text
-title "Star Pickup"
+title "Slime Familiar"
 type sprite
-size 24x24
-palette snes
-outline #141020
+size 32x32
+palette forest
+outline #0D1712
 light -0.5,-0.7
-fps 10
 
-part body ramp=gold z=0 pivot=12,12 dither=bayer2
-  circle 12,12 r=6.5
-  ring 12,12 r=8.0 thick=1.5 op=smin k=1.5
-  pixel 10,9 w=2 h=2 step=3 ramp=bone
+part shadow ramp=obsidian z=-5 pivot=16,28
+  box 16,28 8,1.5 r=1.0 step=0
 
-tag spin frames=4 loop=loop
-  pose body dy=sin(1.5) squash=cos(0.12)
+part body ramp=slime z=0 pivot=16,27 dither=bayer2
+  circle 16,20 r=8.5
+  box 16,24 9.0,4.0 r=2.5 op=smin k=2.5
+
+part eyes ramp=obsidian z=5 pivot=16,19
+  pixel 13,18 w=2 h=3 step=0
+  pixel 18,18 w=2 h=3 step=0
+  pixel 13,18 w=1 h=1 step=3 ramp=bone
+  pixel 18,18 w=1 h=1 step=3 ramp=bone
+
+tag idle frames=4 duration=150ms loop=loop
+  pose body squash=sin(0.10)
+  pose eyes dy=sin(1.0)
 ```
 
----
-
-## 4. Streamlined Sprite Editor Workflow (`game-dev-studio`)
-
-Whenever you create, normalize, or edit a `.sprite` or `.aseprite` file, surface a clickable `sidecar://` pill in chat so the user can inspect the asset in the **Sprite tab in Game Dev Studio** (**Sprite Editor**):
-
-- **File-scoped pill** (opens Game Dev Studio with the Sprite tab focused on the file; use the file's basename as the link label):
-  - `[black_cat_anime.sprite](sidecar://agy-game-studio/studio/sprite?file=/abs/path/to/black_cat_anime.sprite)`
-  - `[black_cat_anime.aseprite](sidecar://agy-game-studio/studio/sprite?file=/abs/path/to/black_cat_anime.aseprite)`
-- **General pill**:
-  - `[Game Dev Studio (Sprite Tab)](sidecar://agy-game-studio/studio/sprite)` (or `[Sprite Editor](sidecar://agy-game-studio/studio/sprite)`)
-
-### Key Sprite Editor Behaviors
-
-1. **Standardized File, Artifact, Save & Export Menu**:
-   Follows the same standardized menu as Paint Studio (`agy-paint-studio`): **Open File** (`.sprite` or `.aseprite`), **Open Artifact** (browse/save session artifacts), **Save** (save `.sprite` to filesystem or browser download), and **Export** (export `.aseprite`, `.png` sheet, or `.json` manifest).
-2. **Container-Only Scope (`.sprite` and `.aseprite` Only)**:
-   The **Sprite tab** opens `.sprite` and `.aseprite` container files (such as `black_cat_anime.sprite` and `black_cat_anime.aseprite`). Opening an `.aseprite` binary parses its binary header, cels, and `0x2018` tags directly without silently substituting a sibling `.sprite` file. Never open raw `.png` files in the Sprite Editor; raw `.png` images belong in Paint Studio (`paint-studio`).
-3. **Starts Paused**:
-   Animation playback always starts paused on the resting frame so the user can inspect proportions and silhouettes before clicking **Play**.
-4. **Visual vs. `.sprite` Text Toggle**:
-   A two-way action button switches between **Visual** preview mode and **`.sprite` Text** editor mode for live edits to tag frame ranges, lead-in `once` frames, loop modes (`loop`, `once`, `pingpong`, `reverse`), or SDF primitives.
-5. **Inline Playback, Speed, Lead-In (`1× Once`) & Backdrop Controls**:
-   The toolbar provides **Play / Pause**, **Speed** (`0.25x`, `0.5x`, `1x`, `2x`), a **`1× Once`** toggle in the bottom transport bar to flag lead-in intro frames inside a looping tag (emitting `tag run 8 once, 9..11 loop`), and **Backdrop** (`Slate`, `Light`, `Void`, `Chroma`). The canvas enforces uniform aspect-ratio scaling so frames never stretch.
-6. **Per-Frame Prompt Comments (`+ Note` and `Send`)**:
-   In the bottom comment bar, the user can attach notes to specific tags or frames with `+ Note` and click `Send` to dispatch structured revision requests back to the main chat.
+Pass the `.sprite` text (`dsl`) or `filePath` to `sprite_compile` with `outPngPath`, `outJsonPath`, `outAsepritePath`, `outPreviewPath`, and `outGifDir` to bake game-ready assets on disk.
 
 ---
 
-## 5. CLI Commands & Visual QA Validator (`ValidateSprite`)
+## Five visual QA checks (`sprite_inspect` / `sprite_compile` / `sprite_normalize`)
 
-Run all CLI commands from `skills/sprite-design/scripts/`:
-
-```bash
-cd skills/sprite-design/scripts
-
-# 1. Validate .sprite, .aseprite, or .png files against all 5 visual QA invariants
-go run . validate black_cat_anime.sprite black_cat_anime.aseprite
-
-# 2. Normalize raw AI sprite grids into .png, .sprite, .json, .aseprite, preview PNG, and per-tag GIFs
-go run . normalize -cols 4 -rows 4 -center=true -ground=true -pad 8 \
-  -tag idle:0:3:100:pingpong -tag walk:4:7:100:loop \
-  -out clean.png -sprite clean.sprite -json clean.json -aseprite clean.aseprite \
-  -preview /tmp/clean_preview.png -gif-dir /tmp/clean_gifs raw_grid.png
-
-# 3. Export a .sprite file (container or procedural SDF) to .aseprite, .png, .json, preview, and GIFs
-go run . export -png out.png -json out.json -aseprite out.aseprite \
-  -preview /tmp/out_preview.png -gif-dir /tmp/out_gifs -scale 1 black_cat_anime.sprite
-
-# 4. Extract 4-step material ramp lines from a Step 1 character reference sheet PNG
-go run . extract-palette -ramps 4 character_sheet.png
-
-# 5. Emit single-line JSON inspection or synthesis reports for tooling and sidecars
-go run . inspect-json black_cat_anime.sprite
-go run . synth-json -png /tmp/out.png black_cat_anime.sprite
-```
-
-### Five Deterministic Visual QA Checks (`ValidateSprite`)
-
-1. **Premultiplied Alpha Invariant ($R, G, B \le A$)**: Every pixel across every frame and `SheetRGBA` must satisfy `R <= A`, `G <= A`, and `B <= A` (`ValidatePremultipliedRGBA`), preventing glowing halos in Ebitengine.
-2. **Frame Bounding-Box Fill Ratio**:
-   - `type sprite`: Active bounding box must occupy **`8.0%` to `92.0%`** of the frame area.
-   - `type tileset`: Active bounding box must occupy **`50.0%` to `100.0%`** of the frame area.
-3. **Center-of-Mass Pivot Stability**: Horizontal center of mass across sprite frames must stay within **`18%` to `82%`** of the frame width so horizontal flipping (`flipX`) never teleports the character.
-4. **Shading & Silhouette Contrast**: Opaque pixels must span at least **3 distinct luminance buckets** (out of 16 quantized Rec. 601 luminance levels).
-5. **Animation Tag Integrity**: Every tag must have valid frame bounds (`0 <= FromFrame <= ToFrame < TotalFrames`) and positive frame duration (`DurationMs > 0`).
+1. **Premultiplied alpha (`premultipliedClean`, `R, G, B <= A`)**: Every pixel in every frame must be valid premultiplied RGBA to prevent bright blending halos.
+2. **Bounding-box fill ratio (`fillRatioPct`)**: `type sprite` must occupy `8.0%` to `92.0%` of the frame area; `type tileset` must occupy `50.0%` to `100.0%`.
+3. **Center-of-mass stability (`centerOfMassX`)**: Horizontal center of mass across frames must remain within `18%` to `82%` of frame width so `flipX` mirrors naturally without shifting position.
+4. **Shading contrast (`luminanceSteps`)**: Opaque pixels must span at least `3` distinct luminance buckets (out of `16` Rec. 601 quantized levels).
+5. **Tag bounds and timing**: Every tag must satisfy `0 <= FromFrame <= ToFrame < TotalFrames` with positive `DurationMs`.
 
 ---
 
-## 6. Zero-Allocation Ebitengine Integration Patterns
+## Baking, `//go:embed`, and zero-allocation Ebitengine integration
 
-### 6.1 Option A: Load a `.sprite` File Directly (`LoadSpriteFile` -> `ToEbitenController`)
-
-Both sheet-backed `.sprite` containers (such as `black_cat_anime.sprite`) and procedural SDF `.sprite` scripts compile directly into an Ebitengine `AnimationController` at startup:
+Bake final `.png` + `.json` manifests (or `.aseprite` binaries) into `internal/assets/sprites/` via `sprite_compile` or `sprite_normalize`, embed them in Go using `//go:embed`, and pre-slice every cell once at startup so `Draw()` never calls `SubImage` or allocates `ebiten.DrawImageOptions`:
 
 ```go
-package main
-
-import (
-	"time"
-
-	"github.com/hajimehoshi/ebiten/v2"
-)
-
-type Actor struct {
-	X, Y       float64
-	FacingLeft bool
-	Anim       *AnimationController
-}
-
-func NewActor(spritePath string) (*Actor, error) {
-	spec, err := LoadSpriteFile(spritePath)
-	if err != nil {
-		return nil, err
-	}
-	compiled, err := CompileSprite(spec)
-	if err != nil {
-		return nil, err
-	}
-	ctrl, err := compiled.ToEbitenController()
-	if err != nil {
-		return nil, err
-	}
-	_ = ctrl.Play("idle")
-	return &Actor{X: 120, Y: 180, Anim: ctrl}, nil
-}
-
-func (a *Actor) Update() error {
-	// Advance animation state machine using fixed 60 TPS delta (16.66ms)
-	a.Anim.Update(time.Second / 60)
-	return nil
-}
-
-func (a *Actor) Draw(screen *ebiten.Image) {
-	// Zero-allocation sub-image draw with automatic horizontal flip handling
-	a.Anim.Draw(screen, a.X, a.Y, a.FacingLeft)
-}
-```
-
-### 6.2 Option B: Pre-Sliced `.png` Atlas (`NewGridSpriteSheet` & `NewAnimationController`)
-
-When embedding a normalized `.png` sheet with `//go:embed`, slice all grid cells once during initialization (`NewGridSpriteSheet`) so `Draw()` never calls `SubImage` on the heap:
-
-```go
-package main
+package assets
 
 import (
 	"bytes"
 	_ "embed"
+	"fmt"
 	"image"
 	_ "image/png"
-	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-//go:embed black_cat_anime.png
-var catSheetPNG []byte
+//go:embed sprites/hero_cat.png
+var heroCatPNG []byte
 
-func LoadCatController() (*AnimationController, error) {
-	decoded, _, err := image.Decode(bytes.NewReader(catSheetPNG))
+//go:embed sprites/hero_cat.json
+var HeroCatJSON []byte
+
+func LoadEmbeddedImage(raw []byte, label string) (*ebiten.Image, error) {
+	img, _, err := image.Decode(bytes.NewReader(raw))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("assets: decode %s: %w", label, err)
 	}
-	atlas := ebiten.NewImageFromImage(decoded)
+	return ebiten.NewImageFromImage(img), nil
+}
+```
 
-	// Pre-slice all 256x256 cells at load time (zero SubImage allocations in Draw)
-	sheet, err := NewGridSpriteSheet(atlas, 256, 256)
-	if err != nil {
-		return nil, err
-	}
+Slice the decoded `*ebiten.Image` once at `Boot` (using either a grid slicer `NewGridSpriteSheet` + `AnimationController` or `SolarLune/goaseprite` over the exported JSON manifest as shown in [`references/aseprite_format.md`](references/aseprite_format.md)):
 
-	ctrl := NewAnimationController(sheet)
-	if err := ctrl.AddTag("idle", 0, 3, 100*time.Millisecond, LoopPingPong); err != nil {
-		return nil, err
-	}
-	if err := ctrl.AddTag("walk", 4, 7, 100*time.Millisecond, LoopForward); err != nil {
-		return nil, err
-	}
-	if err := ctrl.AddTagWithIntro("run", 8, 9, 11, 100*time.Millisecond, LoopForward); err != nil {
-		return nil, err
-	}
-	if err := ctrl.AddTag("jump", 12, 15, 100*time.Millisecond, LoopOnce); err != nil {
-		return nil, err
-	}
-	if err := ctrl.AddTag("fall", 16, 19, 100*time.Millisecond, LoopForward); err != nil {
-		return nil, err
-	}
-	_ = ctrl.Play("idle")
-	return ctrl, nil
+```go
+sheet, err := NewGridSpriteSheet(atlasImage, 256, 256)
+if err != nil {
+	return nil, err
+}
+ctrl := NewAnimationController(sheet)
+if err := ctrl.AddTag("idle", 0, 3, 100*time.Millisecond, LoopPingPong); err != nil {
+	return nil, err
+}
+if err := ctrl.AddTagWithIntro("run", 8, 9, 11, 100*time.Millisecond, LoopForward); err != nil {
+	return nil, err
+}
+if err := ctrl.AddTag("attack", 28, 31, 60*time.Millisecond, LoopOnce); err != nil {
+	return nil, err
+}
+if err := ctrl.Play("idle"); err != nil {
+	return nil, fmt.Errorf("play initial idle tag: %w", err)
 }
 ```

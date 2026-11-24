@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "game-studio": {
+      "command": "node",
+      "args": ["scripts/run-mcp.mjs"]
+    }
+  }
+}

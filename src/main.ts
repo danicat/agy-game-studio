@@ -16,11 +16,7 @@
 
 import './style.css';
 import { PlaytestStudioUI, StudioNotifier } from './ui/PlaytestStudioUI.ts';
-import { SoundStudioUI } from './ui/SoundStudioUI.ts';
-import { SpriteStudioUI } from './ui/SpriteStudioUI.ts';
 import { getStudioMode } from './utils/api.ts';
-
-export type StudioView = 'playtest' | 'sound' | 'sprite';
 
 function parseColorLuminance(raw: string): number | null {
   const val = raw.trim().toLowerCase();
@@ -183,36 +179,6 @@ function setupHostThemeSync(): void {
   }
 }
 
-function detectInitialStudioView(): StudioView {
-  const pathname = window.location.pathname || '/';
-  const params = new URLSearchParams(window.location.search);
-  const viewParam = (params.get('view') || '').trim().toLowerCase();
-  const fileParam = (params.get('file') || params.get('path') || params.get('uri') || '')
-    .trim()
-    .toLowerCase();
-
-  if (
-    pathname.startsWith('/sprite') ||
-    viewParam === 'sprite' ||
-    fileParam.endsWith('.sprite') ||
-    fileParam.endsWith('.aseprite') ||
-    fileParam.endsWith('.ase')
-  ) {
-    return 'sprite';
-  }
-
-  if (
-    pathname.startsWith('/sound') ||
-    viewParam === 'sound' ||
-    fileParam.endsWith('.music') ||
-    fileParam.endsWith('.sfx')
-  ) {
-    return 'sound';
-  }
-
-  return 'playtest';
-}
-
 function initGameStudio(): void {
   try {
     setupHostThemeSync();
@@ -261,204 +227,14 @@ function initGameStudio(): void {
       );
     }
 
-    // Create a top-level studio view bar above the toolbars (separate hierarchy level)
-    let topNavEl = document.getElementById('studio-top-nav');
-    if (!topNavEl) {
-      topNavEl = document.createElement('nav');
-      topNavEl.id = 'studio-top-nav';
-      topNavEl.className = 'studio-top-nav';
-      topNavEl.setAttribute('aria-label', 'Game Dev Studio Workspace');
-      topNavEl.innerHTML = `
-        <div class="studio-top-tabs" role="tablist" aria-label="Game Dev Studio Tabs">
-          <button
-            type="button"
-            id="top-tab-playtest"
-            class="studio-top-tab"
-            role="tab"
-            aria-selected="true"
-          >
-            Playtest
-          </button>
-          <button
-            type="button"
-            id="top-tab-sound"
-            class="studio-top-tab"
-            role="tab"
-            aria-selected="false"
-          >
-            Sound
-          </button>
-          <button
-            type="button"
-            id="top-tab-sprite"
-            class="studio-top-tab"
-            role="tab"
-            aria-selected="false"
-          >
-            Sprites
-          </button>
-        </div>
-      `;
-      appRootEl.insertBefore(topNavEl, appRootEl.firstChild);
-    }
+    new PlaytestStudioUI({
+      headerEl,
+      annotationBarEl,
+      viewportEl,
+      bugBarEl
+    });
 
-    const tabPlaytestBtn = topNavEl.querySelector('#top-tab-playtest') as HTMLButtonElement | null;
-    const tabSoundBtn = topNavEl.querySelector('#top-tab-sound') as HTMLButtonElement | null;
-    const tabSpriteBtn = topNavEl.querySelector('#top-tab-sprite') as HTMLButtonElement | null;
-
-    // Create dedicated Sound Editor root container inside #app-root
-    let soundRootEl = document.getElementById('sound-studio-root');
-    if (!soundRootEl) {
-      soundRootEl = document.createElement('div');
-      soundRootEl.id = 'sound-studio-root';
-      soundRootEl.className = 'sound-studio-root hidden';
-      appRootEl.appendChild(soundRootEl);
-    }
-
-    // Create dedicated Sprite Editor root container inside #app-root
-    let spriteRootEl = document.getElementById('sprite-studio-root');
-    if (!spriteRootEl) {
-      spriteRootEl = document.createElement('div');
-      spriteRootEl.id = 'sprite-studio-root';
-      spriteRootEl.className = 'sprite-studio-root hidden';
-      appRootEl.appendChild(spriteRootEl);
-    }
-
-    let playtestUI: PlaytestStudioUI | null = null;
-    let soundUI: SoundStudioUI | null = null;
-    let spriteUI: SpriteStudioUI | null = null;
-    let activeView: StudioView = detectInitialStudioView();
-
-    const isFileCompatibleWithView = (filePath: string, view: StudioView): boolean => {
-      const lower = (filePath || '').trim().toLowerCase();
-      if (!lower) return false;
-      if (view === 'sound') {
-        return lower.endsWith('.music') || lower.endsWith('.sfx');
-      }
-      if (view === 'sprite') {
-        return lower.endsWith('.sprite') || lower.endsWith('.aseprite') || lower.endsWith('.ase');
-      }
-      return false;
-    };
-
-    const updateUrlForView = (view: StudioView, clearFileParams = false) => {
-      try {
-        const params = new URLSearchParams(window.location.search);
-        if (params.has('view')) {
-          params.set('view', view);
-        }
-        const currentFile = params.get('file') || params.get('path') || params.get('uri') || '';
-        if (clearFileParams || (currentFile && !isFileCompatibleWithView(currentFile, view))) {
-          params.delete('file');
-          params.delete('path');
-          params.delete('uri');
-        }
-        const targetPath =
-          view === 'sound' ? '/sound' : view === 'sprite' ? '/sprite' : '/playtest';
-        const qs = params.toString();
-        const nextUrl = `${targetPath}${qs ? `?${qs}` : ''}`;
-        if (window.location.pathname + window.location.search !== nextUrl) {
-          window.history.replaceState({ view }, '', nextUrl);
-        }
-      } catch {
-        // Ignore history.replaceState restrictions in sandboxed environments
-      }
-      document.title = 'Game Dev Studio';
-    };
-
-    const ensurePlaytestUI = (): PlaytestStudioUI => {
-      if (!playtestUI) {
-        playtestUI = new PlaytestStudioUI({
-          headerEl,
-          annotationBarEl,
-          viewportEl,
-          bugBarEl
-        });
-      }
-      return playtestUI;
-    };
-
-    const ensureSoundUI = (): SoundStudioUI => {
-      if (!soundUI) {
-        soundUI = new SoundStudioUI({
-          rootEl: soundRootEl!,
-          onSwitchToPlaytest: () => switchToView('playtest')
-        });
-      }
-      return soundUI;
-    };
-
-    const ensureSpriteUI = (): SpriteStudioUI => {
-      if (!spriteUI) {
-        spriteUI = new SpriteStudioUI({
-          rootEl: spriteRootEl!
-        });
-      }
-      return spriteUI;
-    };
-
-    const switchToView = (view: StudioView, updateHistory = true): void => {
-      activeView = view;
-      const isPlaytest = view === 'playtest';
-      const isSound = view === 'sound';
-      const isSprite = view === 'sprite';
-
-      if (tabPlaytestBtn && tabSoundBtn) {
-        tabPlaytestBtn.classList.toggle('active', isPlaytest);
-        tabPlaytestBtn.setAttribute('aria-selected', String(isPlaytest));
-        tabSoundBtn.classList.toggle('active', isSound);
-        tabSoundBtn.setAttribute('aria-selected', String(isSound));
-      }
-      if (tabSpriteBtn) {
-        tabSpriteBtn.classList.toggle('active', isSprite);
-        tabSpriteBtn.setAttribute('aria-selected', String(isSprite));
-      }
-
-      if (!isPlaytest && playtestUI && playtestUI.runner.isRunning() && !playtestUI.runner.isPaused()) {
-        playtestUI.runner.setPaused(true);
-      }
-      if (!isSound && soundUI) {
-        soundUI.stopPlayback();
-      }
-      if (!isSprite && spriteUI) {
-        spriteUI.pausePlayback();
-      }
-
-      headerEl.classList.toggle('studio-view-hidden', !isPlaytest);
-      annotationBarEl.classList.toggle('studio-view-hidden', !isPlaytest);
-      viewportEl.classList.toggle('studio-view-hidden', !isPlaytest);
-      bugBarEl.classList.toggle('studio-view-hidden', !isPlaytest);
-
-      soundRootEl!.classList.toggle('hidden', !isSound);
-      spriteRootEl!.classList.toggle('hidden', !isSprite);
-
-      if (updateHistory) {
-        updateUrlForView(view);
-      } else {
-        document.title = 'Game Dev Studio';
-      }
-
-      if (isSound) {
-        ensureSoundUI();
-      } else if (isSprite) {
-        ensureSpriteUI().onShow();
-      } else {
-        ensurePlaytestUI();
-      }
-    };
-
-    tabPlaytestBtn?.addEventListener('click', () => switchToView('playtest'));
-    tabSoundBtn?.addEventListener('click', () => switchToView('sound'));
-    tabSpriteBtn?.addEventListener('click', () => switchToView('sprite'));
-
-    const initialPath = window.location.pathname || '/';
-    const shouldNormalizeHistory =
-      initialPath.startsWith('/sound') ||
-      initialPath.startsWith('/sprite') ||
-      initialPath.startsWith('/playtest');
-    switchToView(activeView, shouldNormalizeHistory);
-
-    console.log(`[Game Dev Studio] Initialized "${activeView}" view in "${mode}" mode`);
+    console.log(`[Game Dev Studio] Initialized playtest view in "${mode}" mode`);
   } catch (err: any) {
     console.error('[Game Dev Studio] Initialization error:', err);
     StudioNotifier.fatal('Game Dev Studio Initialization Failed', err);
